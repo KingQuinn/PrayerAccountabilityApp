@@ -1,29 +1,47 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { useEffect, useState, createContext, useContext } from 'react';
+import { Slot, useRouter, useSegments } from 'expo-router';
+import { supabase } from '../lib/supabase';
+import NotificationsBootstrap from '@/notifications/bootstrap';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+type SessionT = { user: { id: string; email?: string | null } | null } | null;
+
+const SessionCtx = createContext<SessionT | undefined>(undefined);
+export const useSession = () => useContext(SessionCtx);
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+  const [session, setSession] = useState<SessionT>(undefined as any);
+  const router = useRouter();
+  const segments = useSegments();
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (session === undefined) return;
+    const inAuth = segments[0] === '(auth)';
+    if (!session?.user && !inAuth) {
+      router.replace('/login');
+    } else if (session?.user && inAuth) {
+      router.replace('/');
+    }
+  }, [session, segments, router]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <SessionCtx.Provider value={session}>
+      {NotificationsBootstrap()}
+      <Slot />
+    </SessionCtx.Provider>
   );
 }
