@@ -8,12 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		2856EB1218AB6459726FE6EA /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C39C7F9668281A72B0F71A48 /* ExpoModulesProvider.swift */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		5902C13A3F8A4731AD648544 /* adhan1.wav in Resources */ = {isa = PBXBuildFile; fileRef = B2C4CBF43BA041D89135503E /* adhan1.wav */; };
-		713CA74B4852FC00565728B6 /* libPods-PrayerAccountabilityApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 540F198AED95FCCFEC697606 /* libPods-PrayerAccountabilityApp.a */; };
+		3EDFE6CC83A4FC8ECB1BA1E1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 39AA567986C708B23606426D /* PrivacyInfo.xcprivacy */; };
+		63435C4AF2B2F430081A5B17 /* libPods-PrayerAccountabilityApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B5C517629C3CA6C6DFD14F6 /* libPods-PrayerAccountabilityApp.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		D7A7A6C1D5057EA8BEB1092D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4D23BA221459B9FD26071B84 /* PrivacyInfo.xcprivacy */; };
+		C9FDC5054C934C4C9ADBC98B /* adhan1.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7130186983804411BF35E0E0 /* adhan1.wav */; };
+		CF6200360E7834299DEB7AA8 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0F53046D38F0191C5791FC /* ExpoModulesProvider.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -21,17 +21,17 @@
 		13B07F961A680F5B00A75B9A /* PrayerAccountabilityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrayerAccountabilityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = PrayerAccountabilityApp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = PrayerAccountabilityApp/Info.plist; sourceTree = "<group>"; };
-		4D23BA221459B9FD26071B84 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = PrayerAccountabilityApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		540F198AED95FCCFEC697606 /* libPods-PrayerAccountabilityApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PrayerAccountabilityApp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		66B7FC95AFA752F478467535 /* Pods-PrayerAccountabilityApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PrayerAccountabilityApp.release.xcconfig"; path = "Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp.release.xcconfig"; sourceTree = "<group>"; };
+		2CA4C10431BFBC1CBF9F1890 /* Pods-PrayerAccountabilityApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PrayerAccountabilityApp.debug.xcconfig"; path = "Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp.debug.xcconfig"; sourceTree = "<group>"; };
+		39AA567986C708B23606426D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = PrayerAccountabilityApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7130186983804411BF35E0E0 /* adhan1.wav */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = adhan1.wav; path = PrayerAccountabilityApp/adhan1.wav; sourceTree = "<group>"; };
+		7B5C517629C3CA6C6DFD14F6 /* libPods-PrayerAccountabilityApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PrayerAccountabilityApp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = PrayerAccountabilityApp/SplashScreen.storyboard; sourceTree = "<group>"; };
-		B2C4CBF43BA041D89135503E /* adhan1.wav */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = adhan1.wav; path = PrayerAccountabilityApp/adhan1.wav; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		C39C7F9668281A72B0F71A48 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PrayerAccountabilityApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		ED0F53046D38F0191C5791FC /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PrayerAccountabilityApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = PrayerAccountabilityApp/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* PrayerAccountabilityApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "PrayerAccountabilityApp-Bridging-Header.h"; path = "PrayerAccountabilityApp/PrayerAccountabilityApp-Bridging-Header.h"; sourceTree = "<group>"; };
-		F9ABD2865CC2535F14F34EC1 /* Pods-PrayerAccountabilityApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PrayerAccountabilityApp.debug.xcconfig"; path = "Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp.debug.xcconfig"; sourceTree = "<group>"; };
+		F6E21DD4F1D570D42C8DCD0E /* Pods-PrayerAccountabilityApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PrayerAccountabilityApp.release.xcconfig"; path = "Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,7 +39,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				713CA74B4852FC00565728B6 /* libPods-PrayerAccountabilityApp.a in Frameworks */,
+				63435C4AF2B2F430081A5B17 /* libPods-PrayerAccountabilityApp.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,8 +55,8 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				B2C4CBF43BA041D89135503E /* adhan1.wav */,
-				4D23BA221459B9FD26071B84 /* PrivacyInfo.xcprivacy */,
+				7130186983804411BF35E0E0 /* adhan1.wav */,
+				39AA567986C708B23606426D /* PrivacyInfo.xcprivacy */,
 			);
 			name = PrayerAccountabilityApp;
 			sourceTree = "<group>";
@@ -65,35 +65,9 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				540F198AED95FCCFEC697606 /* libPods-PrayerAccountabilityApp.a */,
+				7B5C517629C3CA6C6DFD14F6 /* libPods-PrayerAccountabilityApp.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		34314D002644CA8E167DD843 /* PrayerAccountabilityApp */ = {
-			isa = PBXGroup;
-			children = (
-				C39C7F9668281A72B0F71A48 /* ExpoModulesProvider.swift */,
-			);
-			name = PrayerAccountabilityApp;
-			sourceTree = "<group>";
-		};
-		358CAC211F20DF522929E0AF /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				34314D002644CA8E167DD843 /* PrayerAccountabilityApp */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
-		3B43F58F33365A8CB031EAFF /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				F9ABD2865CC2535F14F34EC1 /* Pods-PrayerAccountabilityApp.debug.xcconfig */,
-				66B7FC95AFA752F478467535 /* Pods-PrayerAccountabilityApp.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -110,8 +84,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				3B43F58F33365A8CB031EAFF /* Pods */,
-				358CAC211F20DF522929E0AF /* ExpoModulesProviders */,
+				C466DC7266BAE60934F58B59 /* Pods */,
+				D2553F69E5D4F655F96D8230 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -135,6 +109,32 @@
 			path = PrayerAccountabilityApp/Supporting;
 			sourceTree = "<group>";
 		};
+		C466DC7266BAE60934F58B59 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				2CA4C10431BFBC1CBF9F1890 /* Pods-PrayerAccountabilityApp.debug.xcconfig */,
+				F6E21DD4F1D570D42C8DCD0E /* Pods-PrayerAccountabilityApp.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		D2553F69E5D4F655F96D8230 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				D57C7BD3C4D49F23CB12B914 /* PrayerAccountabilityApp */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
+		D57C7BD3C4D49F23CB12B914 /* PrayerAccountabilityApp */ = {
+			isa = PBXGroup;
+			children = (
+				ED0F53046D38F0191C5791FC /* ExpoModulesProvider.swift */,
+			);
+			name = PrayerAccountabilityApp;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -143,13 +143,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "PrayerAccountabilityApp" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				662556698CB4F72760D0FB69 /* [Expo] Configure project */,
+				D89D6F9B8738335305E0F38B /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				CE88B57682D56F2EDC353877 /* [CP] Embed Pods Frameworks */,
+				869D8D48951BAECB185FF8FA /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -199,8 +199,8 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				5902C13A3F8A4731AD648544 /* adhan1.wav in Resources */,
-				D7A7A6C1D5057EA8BEB1092D /* PrivacyInfo.xcprivacy in Resources */,
+				C9FDC5054C934C4C9ADBC98B /* adhan1.wav in Resources */,
+				3EDFE6CC83A4FC8ECB1BA1E1 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -243,25 +243,6 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
-		};
-		662556698CB4F72760D0FB69 /* [Expo] Configure project */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-PrayerAccountabilityApp/expo-configure-project.sh\"\n";
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -307,7 +288,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		CE88B57682D56F2EDC353877 /* [CP] Embed Pods Frameworks */ = {
+		869D8D48951BAECB185FF8FA /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -325,6 +306,25 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-PrayerAccountabilityApp/Pods-PrayerAccountabilityApp-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		D89D6F9B8738335305E0F38B /* [Expo] Configure project */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-PrayerAccountabilityApp/expo-configure-project.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -333,7 +333,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				2856EB1218AB6459726FE6EA /* ExpoModulesProvider.swift in Sources */,
+				CF6200360E7834299DEB7AA8 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -342,7 +342,7 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F9ABD2865CC2535F14F34EC1 /* Pods-PrayerAccountabilityApp.debug.xcconfig */;
+			baseConfigurationReference = 2CA4C10431BFBC1CBF9F1890 /* Pods-PrayerAccountabilityApp.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -378,7 +378,7 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 66B7FC95AFA752F478467535 /* Pods-PrayerAccountabilityApp.release.xcconfig */;
+			baseConfigurationReference = F6E21DD4F1D570D42C8DCD0E /* Pods-PrayerAccountabilityApp.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;

@@ -25,7 +25,8 @@
           },
           "enableBackgroundRemoteNotifications": false
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

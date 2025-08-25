@@ -139,40 +139,39 @@ export async function scheduleNextPrayerNotification(
   await cancelAllPrayerNotifications();
 
   if (nextKey && nextTime) {
-    const soundFilename = playSound
-      ? Platform.select({
-          ios: options?.iosSound || 'adhan1.wav',
-          android: 'adhan1.wav',
-          default: undefined,
-        })
-      : undefined;
-
-    const trigger =
-      Platform.OS === 'android'
-        ? {
-            type: Notifications.SchedulableTriggerInputTypes.DATE as const,
-            channelId: options?.androidChannelId || 'adhan',
-            date: nextTime,
-          }
-        : {
-            type: Notifications.SchedulableTriggerInputTypes.DATE as const,
-            date: nextTime,
-          };
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
+    if (playSound) {
+      // Use hybrid notification system for audio
+      const { audioNotificationService } = await import('./audioService');
+      await audioNotificationService.scheduleHybridNotification({
         title: 'Time to Pray',
         body: `It's time for ${capitalize(nextKey)}.`,
-      
-        sound: Platform.select({
-          ios: 'adhan1',
-          android: 'adhan1.wav',
-          default: undefined,
-        }),
+        triggerDate: nextTime,
         data: { type: 'prayer', prayer: nextKey },
-      },
-      trigger: trigger,
-    });
+      });
+    } else {
+      // Use regular silent notification
+      const trigger =
+        Platform.OS === 'android'
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes.DATE as const,
+              channelId: options?.androidChannelId || 'adhan',
+              date: nextTime,
+            }
+          : {
+              type: Notifications.SchedulableTriggerInputTypes.DATE as const,
+              date: nextTime,
+            };
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Time to Pray',
+          body: `It's time for ${capitalize(nextKey)}.`,
+          sound: undefined, // Silent notification
+          data: { type: 'prayer', prayer: nextKey },
+        },
+        trigger: trigger,
+      });
+    }
 
     return nextKey;
   }
@@ -184,34 +183,11 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Test function to schedule a notification in 10 seconds
+// Test function to schedule a notification in 10 seconds using hybrid system
 export async function scheduleTestAudioNotification() {
-  const trigger = Platform.OS === 'android'
-    ? {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL as const,
-        channelId: 'adhan',
-        seconds: 10,
-      }
-    : {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL as const,
-        seconds: 10,
-      };
+  const { audioNotificationService } = await import('./audioService');
+  await audioNotificationService.scheduleTestNotification();
   
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: "🕌 Test Prayer Notification",
-      body: "Testing audio notification with your new adhan file",
-      sound: Platform.select({
-        ios: 'adhan1.wav',
-        android: 'adhan1.wav',
-        default: undefined,
-      }),
-      data: { type: 'test', prayer: 'test' }
-    },
-    trigger: trigger
-  });
-  
-  console.log('Test audio notification scheduled for 10 seconds from now');
+  console.log('Hybrid test audio notification scheduled for 10 seconds from now');
   console.log('Current time:', new Date());
-  console.log('Trigger object:', trigger);
 }
