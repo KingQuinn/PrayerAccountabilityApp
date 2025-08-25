@@ -40,7 +40,7 @@ export default function RootLayout() {
 
   return (
     <SessionCtx.Provider value={session}>
-      {NotificationsBootstrap()}
+      <NotificationsBootstrap />
       <Slot />
     </SessionCtx.Provider>
   );

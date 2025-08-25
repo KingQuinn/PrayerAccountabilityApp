@@ -91,7 +91,7 @@ export async function scheduleTodayPrayerNotifications(
         title: 'Time to Pray',
         body: `It’s time for ${capitalize(key)}.`,
         // iOS requires bundled sounds by filename; Android channel uses same name
-        sound: playSound ? (Platform.OS === 'ios' ? 'adhan.wav' : 'adhan.wav') as any : undefined,
+        sound: playSound ? (Platform.OS === 'ios' ? 'adhan1.wav' : 'adhan1.wav') as any : undefined,
         data: { type: 'prayer', prayer: key }
       },
       trigger: {

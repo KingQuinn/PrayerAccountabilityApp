@@ -1,9 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, Button, StyleSheet, ActivityIndicator, Switch, Alert, AppState } from 'react-native';
+import {
+  SafeAreaView,
+  ScrollView,
+  View,
+  Text,
+  Button,
+  StyleSheet,
+  ActivityIndicator,
+  Switch,
+  Alert,
+  AppState,
+} from 'react-native';
 import * as Location from 'expo-location';
 import dayjs from 'dayjs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Coordinates, CalculationMethod, Madhab as AdhanMadhab, HighLatitudeRule as AdhanHighLat, PrayerTimes, CalculationParameters } from 'adhan';
+import {
+  Coordinates,
+  CalculationMethod,
+  Madhab as AdhanMadhab,
+  HighLatitudeRule as AdhanHighLat,
+  PrayerTimes,
+  CalculationParameters,
+} from 'adhan';
 import * as Notifications from 'expo-notifications';
 import { scheduleNextPrayerNotification } from '../../notifications/adhanScheduler';
 import { supabase } from '../../lib/supabase';
@@ -20,12 +38,6 @@ type Checklist = {
 };
 const PRAYERS: (keyof Checklist)[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
-type CalcMethodKey =
-  | 'MuslimWorldLeague' | 'Egyptian' | 'Karachi' | 'NorthAmerica' | 'Kuwait' | 'Qatar' | 'Singapore'
-  | 'UmmAlQura' | 'Dubai' | 'MoonsightingCommittee' | 'Turkey' | 'Tehran';
-type MadhabKey = 'Shafi' | 'Hanafi';
-type HighLatKey = 'MiddleOfTheNight' | 'SeventhOfTheNight' | 'TwilightAngle';
-
 const CONGRATS_LINES = [
   'Beautiful consistency! Keep it up.',
   'Every prayer strengthens the heart.',
@@ -36,7 +48,7 @@ const CONGRATS_LINES = [
   'Steady steps lead to big blessings.',
   'Your commitment shines today!',
   'An excellent day of worship. Keep going!',
-  'BarakAllahu feek! That was fantastic.'
+  'BarakAllahu feek! That was fantastic.',
 ];
 
 export default function Home() {
@@ -50,14 +62,15 @@ export default function Home() {
   const [locError, setLocError] = useState<string | null>(null);
 
   // Checklist + save banner
-  const [checklist, setChecklist] = useState<Checklist>({ fajr: false, dhuhr: false, asr: false, maghrib: false, isha: false });
+  const [checklist, setChecklist] = useState<Checklist>({
+    fajr: false,
+    dhuhr: false,
+    asr: false,
+    maghrib: false,
+    isha: false,
+  });
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
-
-  // Prayer prefs
-  const [calcMethod, setCalcMethod] = useState<CalcMethodKey>('MuslimWorldLeague');
-  const [madhab, setMadhab] = useState<MadhabKey>('Shafi');
-  const [highLat, setHighLat] = useState<HighLatKey>('MiddleOfTheNight');
 
   // Today + nudges strip
   const [today, setToday] = useState(dayjs().format('YYYY-MM-DD'));
@@ -72,6 +85,7 @@ export default function Home() {
   const rescheduleLock = useRef(false);
 
   useEffect(() => {
+    // Auth session
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
     const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => listener.subscription.unsubscribe();
@@ -104,7 +118,6 @@ export default function Home() {
     const setup = async () => {
       if (!uid) return;
       await upsertProfile(uid);
-      await loadProfilePrefs(uid);
       await getAndComputeWithCurrentLocation(); // will reschedule after compute
       await loadChecklistForDay(today, uid);
       await loadUnseenNudgesCount(today, uid);
@@ -113,7 +126,6 @@ export default function Home() {
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        // Refresh location + times; the function handles rescheduling
         getAndComputeWithCurrentLocation();
         if (uid) {
           loadChecklistForDay(today, uid);
@@ -122,7 +134,6 @@ export default function Home() {
       }
     });
 
-    // Periodic GPS refresh (kept)
     gpsTimer.current = setInterval(() => {
       getAndComputeWithCurrentLocation();
     }, 5 * 60 * 1000);
@@ -133,14 +144,6 @@ export default function Home() {
     };
   }, [uid, today]);
 
-  // Recompute if prefs change and coords present
-  useEffect(() => {
-    if (coords) {
-      computeTimes(coords);
-      rescheduleNextIfReady(0);
-    }
-  }, [calcMethod, madhab, highLat]);
-
   // Realtime: DB table changes for nudges (to me), plus app-bus broadcast
   useEffect(() => {
     if (!uid) return;
@@ -148,14 +151,17 @@ export default function Home() {
     // DB realtime for nudges to me
     const ch = supabase
       .channel(`nudges_home_${uid}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'nudges', filter: `to_user=eq.${uid}` }, () => {
-        loadUnseenNudgesCount(dayjs().format('YYYY-MM-DD'), uid);
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'nudges', filter: `to_user=eq.${uid}` },
+        () => {
+          loadUnseenNudgesCount(dayjs().format('YYYY-MM-DD'), uid);
+        }
+      )
       .subscribe();
 
     // App bus for immediate feedback when Buddy marks seen
     const busCh = supabase.channel(`app_bus_${uid}`).subscribe((_status) => {});
-    // Listen to client-side broadcasts
     busCh.on('broadcast', { event: 'nudges_seen' }, (payload: any) => {
       const d = dayjs().format('YYYY-MM-DD');
       if (!payload?.day || payload.day === d) {
@@ -193,21 +199,10 @@ export default function Home() {
 
   const upsertProfile = async (userId: string) => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const { error } = await supabase.from('profiles').upsert({ id: userId, tz }, { onConflict: 'id' });
-    if (error) console.warn('Profile upsert error', error.message);
-  };
-
-  const loadProfilePrefs = async (userId: string) => {
-    const { data } = await supabase
+    const { error } = await supabase
       .from('profiles')
-      .select('calc_method, madhab, high_lat_rule')
-      .eq('id', userId)
-      .single();
-    if (data) {
-      if (data.calc_method) setCalcMethod(data.calc_method as CalcMethodKey);
-      if (data.madhab) setMadhab(data.madhab as MadhabKey);
-      if (data.high_lat_rule) setHighLat(data.high_lat_rule as HighLatKey);
-    }
+      .upsert({ id: userId, tz }, { onConflict: 'id' });
+    if (error) console.warn('Profile upsert error', error.message);
   };
 
   // Count unseen nudges strictly for "today"
@@ -227,11 +222,15 @@ export default function Home() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocError('Location permission denied. Please enable it in Settings to auto-compute prayer times.');
+        setLocError(
+          'Location permission denied. Please enable it in Settings to auto-compute prayer times.'
+        );
         setLoadingTimes(false);
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const c = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       setCoords(c);
       computeTimes(c);
@@ -243,29 +242,11 @@ export default function Home() {
     }
   };
 
+  // Fixed calculation method: MWL + Shafi + MiddleOfTheNight
   function buildParams(): CalculationParameters {
-    let params: CalculationParameters;
-    switch (calcMethod) {
-      case 'MuslimWorldLeague': params = CalculationMethod.MuslimWorldLeague(); break;
-      case 'Egyptian': params = CalculationMethod.Egyptian(); break;
-      case 'Karachi': params = CalculationMethod.Karachi(); break;
-      case 'NorthAmerica': params = CalculationMethod.NorthAmerica(); break;
-      case 'Kuwait': params = CalculationMethod.Kuwait(); break;
-      case 'Qatar': params = CalculationMethod.Qatar(); break;
-      case 'Singapore': params = CalculationMethod.Singapore(); break;
-      case 'UmmAlQura': params = CalculationMethod.UmmAlQura(); break;
-      case 'Dubai': params = CalculationMethod.Dubai(); break;
-      case 'MoonsightingCommittee': params = CalculationMethod.MoonsightingCommittee(); break;
-      case 'Turkey': params = CalculationMethod.Turkey(); break;
-      case 'Tehran': params = CalculationMethod.Tehran(); break;
-      default: params = CalculationMethod.MuslimWorldLeague();
-    }
-    params.madhab = madhab === 'Hanafi' ? AdhanMadhab.Hanafi : AdhanMadhab.Shafi;
-    switch (highLat) {
-      case 'SeventhOfTheNight': params.highLatitudeRule = AdhanHighLat.SeventhOfTheNight; break;
-      case 'TwilightAngle': params.highLatitudeRule = AdhanHighLat.TwilightAngle; break;
-      default: params.highLatitudeRule = AdhanHighLat.MiddleOfTheNight;
-    }
+    const params = CalculationMethod.MuslimWorldLeague();
+    params.madhab = AdhanMadhab.Shafi;
+    params.highLatitudeRule = AdhanHighLat.MiddleOfTheNight;
     return params;
   }
 
@@ -280,7 +261,7 @@ export default function Home() {
         dhuhr: formatTime(pt.dhuhr),
         asr: formatTime(pt.asr),
         maghrib: formatTime(pt.maghrib),
-        isha: formatTime(pt.isha)
+        isha: formatTime(pt.isha),
       });
     } catch (e: any) {
       setLocError(e?.message || 'Failed to compute prayer times.');
@@ -292,16 +273,19 @@ export default function Home() {
     if (!coords || rescheduleLock.current) return;
     rescheduleLock.current = true;
     try {
-      const prefs = { calcMethod, madhab, highLat } as {
-        calcMethod: CalcMethodKey; madhab: MadhabKey; highLat: HighLatKey;
-      };
       await scheduleNextPrayerNotification(
         { latitude: coords.latitude, longitude: coords.longitude },
-        prefs,
+        {
+          calcMethod: 'MuslimWorldLeague',
+          madhab: 'Shafi',
+          highLat: 'MiddleOfTheNight'
+        },
         { graceMinutes, playSound: true }
       );
     } finally {
-      setTimeout(() => { rescheduleLock.current = false; }, 800);
+      setTimeout(() => {
+        rescheduleLock.current = false;
+      }, 800);
     }
   }
 
@@ -327,7 +311,7 @@ export default function Home() {
       day: today,
       prayer,
       completed,
-      completed_at: completed ? new Date().toISOString() : null
+      completed_at: completed ? new Date().toISOString() : null,
     };
     const { error } = await supabase
       .from('prayer_checkins')
@@ -392,13 +376,15 @@ export default function Home() {
   const onToggle = (key: keyof Checklist) => async (v: boolean) => {
     setChecklist((c) => ({ ...c, [key]: v }));
     await saveCheckin(key, v);
-    // Optional: after manually checking, you can still reschedule, but not required
-    // rescheduleNextIfReady(0);
   };
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Welcome 👋</Text>
         <Text style={{ marginBottom: 16 }}>{session?.user?.email}</Text>
 
@@ -438,7 +424,15 @@ export default function Home() {
           ))}
         </View>
 
-        <View style={{ marginTop: 8, minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View
+          style={{
+            marginTop: 8,
+            minHeight: 22,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
           {saving && <ActivityIndicator size="small" />}
           {!!saveMsg && <Text style={{ color: '#0a0' }}>{saveMsg}</Text>}
         </View>
@@ -455,7 +449,15 @@ function Row({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-function CheckRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function CheckRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <View style={styles.rowBetween}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -480,9 +482,20 @@ const styles = StyleSheet.create({
   content: { padding: 24, paddingBottom: 160 },
   title: { fontSize: 24, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
   subtitle: { fontSize: 18, fontWeight: '600' },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
+  rowBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
   rowLabel: { fontSize: 16 },
   rowValue: { fontSize: 16, fontWeight: '600' },
   timesBox: { backgroundColor: '#f7f7f7', borderRadius: 10, padding: 12, marginTop: 8 },
-  nudgeStrip: { backgroundColor: '#fde7e7', padding: 10, borderRadius: 8, marginBottom: 8, alignItems: 'center' }
+  nudgeStrip: {
+    backgroundColor: '#fde7e7',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
 });

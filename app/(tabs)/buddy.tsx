@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState } from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import dayjs from 'dayjs';
 import { supabase } from '../../lib/supabase';
+import { scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
+
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
 
@@ -96,7 +98,7 @@ export default function Buddy() {
   );
 
   // Realtime: live updates
-  useEffect(() => { 
+  useEffect(() => {
     if (!me) return;
     const ch = supabase
       .channel(`buddy_live_${me}`)
@@ -105,7 +107,9 @@ export default function Buddy() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'buddy_links', filter: `user_b=eq.${me}` }, loadLinks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'nudges', filter: `from_user=eq.${me}` }, loadOutgoingNudges)
       .subscribe();
+    return () => {
       supabase.removeChannel(ch);
+    };
   }, [me]);
 
   const loadLinks = async () => {
@@ -211,19 +215,29 @@ export default function Buddy() {
   };
 
   // Wrapper that enforces a short cooldown per buddy to avoid accidental rapid-fire
-  const onNudgePress = async (toUser: string) => {
+  const testAudioNotification = async () => {
+    try {
+      await scheduleTestAudioNotification();
+      Alert.alert('Test Scheduled', 'Audio notification will play in 10 seconds!');
+    } catch (error) {
+      console.error('Error scheduling test notification:', error);
+      Alert.alert('Error', 'Failed to schedule test notification');
+    }
+  };
+
+  const onNudgePress = async (userId: string) => {
     const now = Date.now();
-    const until = cooldown[toUser] || 0;
+    const until = cooldown[userId] || 0;
     if (until && until > now) return; // still cooling down
     // set 1.5s cooldown
-    setCooldown((c) => ({ ...c, [toUser]: now + 1500 }));
+    setCooldown((c) => ({ ...c, [userId]: now + 1500 }));
     try {
-      await nudge(toUser);
+      await nudge(userId);
     } finally {
       setTimeout(() => {
         setCooldown((c) => {
           const n = { ...c };
-          delete n[toUser];
+          delete n[userId];
           return n;
         });
       }, 1500);
@@ -245,6 +259,8 @@ export default function Buddy() {
       Alert.alert('All set', 'Nudges marked as seen.');
     }
   };
+
+
 
   const sendInvite = async () => {
     if (!me) return;
@@ -302,15 +318,18 @@ export default function Buddy() {
 
   return (
     <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <Text style={styles.title}>🤝 Prayer Buddy</Text>
+        <Text style={styles.subtitle}>Stay accountable with your prayer partners 🕌</Text>
+      </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Prayer Buddy</Text>
 
         {loading ? (
           <ActivityIndicator size="small" />
         ) : (
           <>
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Invite a buddy</Text>
+              <Text style={styles.sectionTitle}>📧 Invite a buddy</Text>
               <TextInput
                 placeholder="Friend’s email"
                 autoCapitalize="none"
@@ -319,18 +338,42 @@ export default function Buddy() {
                 value={inviteEmail}
                 onChangeText={setInviteEmail}
               />
-              <Button title={inviting ? 'Sending...' : 'Send invite'} onPress={sendInvite} disabled={inviting} />
-              <View style={{ height: 8 }} />
-              <Button title={refreshing ? 'Refreshing...' : 'Refresh'} onPress={onRefresh} />
-              <View style={{ height: 8 }} />
-              <Button title="Mark nudges as seen" onPress={markNudgesSeen} />
+              <CustomButton 
+                title={inviting ? 'Sending...' : '📧 Send invite'} 
+                onPress={sendInvite} 
+                disabled={inviting}
+                variant="primary"
+              />
+              <View style={{ height: 12 }} />
+              <CustomButton 
+                title={refreshing ? 'Refreshing...' : '🔄 Refresh'} 
+                onPress={onRefresh}
+                variant="secondary"
+              />
+              <View style={{ height: 12 }} />
+              <CustomButton 
+                title="🔊 Test Audio" 
+                onPress={testAudioNotification} 
+                variant="primary"
+              />
+              <View style={{ height: 12 }} />
+              <CustomButton 
+                title="👁️ Mark nudges as seen" 
+                onPress={markNudgesSeen}
+                variant="secondary"
+                size="small"
+              />
+
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Pending invites</Text>
+              <Text style={styles.sectionTitle}>⏳ Pending invites</Text>
               {pendingIncoming.length === 0 && pendingOutgoing.length === 0 ? (
-                <Text>No pending invites.</Text>
-              ) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>📭 No pending invites</Text>
+                    <Text style={styles.emptyStateSubtext}>Send an invite above to get started!</Text>
+                  </View>
+                ) : (
                 <>
                   {pendingIncoming.map((bl) => {
                     const other = me === bl.user_a ? bl.user_b : bl.user_a;
@@ -339,8 +382,8 @@ export default function Buddy() {
                       <View key={bl.id} style={styles.rowBetween}>
                         <Text>From {email}</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <Button title="Accept" onPress={() => acceptInvite(bl.id)} />
-                          <Button title="Decline" color="#b00" onPress={() => declineOrRemove(bl.id)} />
+                          <CustomButton title="✅ Accept" onPress={() => acceptInvite(bl.id)} variant="success" size="small" />
+                          <CustomButton title="❌ Decline" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
                         </View>
                       </View>
                     );
@@ -351,7 +394,7 @@ export default function Buddy() {
                     return (
                       <View key={bl.id} style={styles.rowBetween}>
                         <Text>To {email} (waiting)</Text>
-                        <Button title="Cancel" color="#b00" onPress={() => declineOrRemove(bl.id)} />
+                        <CustomButton title="🚫 Cancel" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
                       </View>
                     );
                   })}
@@ -360,10 +403,13 @@ export default function Buddy() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Your buddies (today)</Text>
+              <Text style={styles.sectionTitle}>👥 Your buddies (today)</Text>
               {accepted.length === 0 ? (
-                <Text>No buddies yet.</Text>
-              ) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>👤 No prayer buddies yet</Text>
+                    <Text style={styles.emptyStateSubtext}>Invite friends to start your accountability journey!</Text>
+                  </View>
+                ) : (
                 accepted.map((bl) => {
                   const other = me === bl.user_a ? bl.user_b : bl.user_a;
                   const email = profiles[other]?.email || other;
@@ -376,15 +422,15 @@ export default function Buddy() {
                     <View key={bl.id} style={styles.buddyBlock}>
                       <View style={styles.rowBetween}>
                         <Text style={{ fontWeight: '600' }}>{email}</Text>
-                        <Button title="Remove" color="#b00" onPress={() => declineOrRemove(bl.id)} />
+                        <CustomButton title="🗑️ Remove" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
                       </View>
 
                       <View style={styles.checklistBox}>
-                        <ChecklistRow label="Fajr" done={todayMap.fajr === true} />
-                        <ChecklistRow label="Dhuhr" done={todayMap.dhuhr === true} />
-                        <ChecklistRow label="Asr" done={todayMap.asr === true} />
-                        <ChecklistRow label="Maghrib" done={todayMap.maghrib === true} />
-                        <ChecklistRow label="Isha" done={todayMap.isha === true} />
+                        <ChecklistRow label="🌅 Fajr" done={todayMap.fajr === true} />
+                        <ChecklistRow label="☀️ Dhuhr" done={todayMap.dhuhr === true} />
+                        <ChecklistRow label="🌤️ Asr" done={todayMap.asr === true} />
+                        <ChecklistRow label="🌅 Maghrib" done={todayMap.maghrib === true} />
+                        <ChecklistRow label="🌙 Isha" done={todayMap.isha === true} />
                       </View>
 
                       <View style={[styles.rowBetween, { marginTop: 8 }]}>
@@ -394,9 +440,9 @@ export default function Buddy() {
                         <Pressable
                           disabled={!active || isCooling}
                           onPress={() => onNudgePress(other)}
-                          style={styles.nudgeBtn(!active || isCooling)}
+                          style={[styles.nudgeBtn, (!active || isCooling) && styles.nudgeBtnDisabled]}
                         >
-                          <Text style={{ color: !active || isCooling ? '#555' : '#0077ff', fontWeight: '600' }}>
+                          <Text style={{ color: !active || isCooling ? '#64748b' : '#ffffff', fontWeight: '600' }}>
                             {!active ? 'No nudge needed' : isCooling ? 'Nudged' : 'Nudge'}
                           </Text>
                         </Pressable>
@@ -413,47 +459,249 @@ export default function Buddy() {
   );
 }
 
+// Custom Button Component
+function CustomButton({ title, onPress, variant = 'primary', disabled = false, size = 'medium' }: {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'danger' | 'success';
+  disabled?: boolean;
+  size?: 'small' | 'medium' | 'large';
+}) {
+  const getButtonStyle = () => {
+    const baseStyle = {
+      borderRadius: 12,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: disabled ? 0 : 0.1,
+      shadowRadius: 4,
+      elevation: disabled ? 0 : 2,
+    };
+
+    const sizeStyles = {
+      small: { paddingVertical: 8, paddingHorizontal: 12 },
+      medium: { paddingVertical: 12, paddingHorizontal: 16 },
+      large: { paddingVertical: 16, paddingHorizontal: 20 },
+    };
+
+    const variantStyles = {
+      primary: { backgroundColor: disabled ? '#e2e8f0' : '#3b82f6' },
+      secondary: { backgroundColor: disabled ? '#e2e8f0' : '#f1f5f9', borderWidth: 1, borderColor: disabled ? '#cbd5e1' : '#cbd5e1' },
+      danger: { backgroundColor: disabled ? '#e2e8f0' : '#ef4444' },
+      success: { backgroundColor: disabled ? '#e2e8f0' : '#10b981' },
+    };
+
+    return { ...baseStyle, ...sizeStyles[size], ...variantStyles[variant] };
+  };
+
+  const getTextStyle = () => {
+    const baseStyle = {
+      fontWeight: '600' as const,
+      fontSize: size === 'small' ? 14 : size === 'large' ? 18 : 16,
+    };
+
+    const variantTextStyles = {
+      primary: { color: disabled ? '#64748b' : '#ffffff' },
+      secondary: { color: disabled ? '#64748b' : '#475569' },
+      danger: { color: disabled ? '#64748b' : '#ffffff' },
+      success: { color: disabled ? '#64748b' : '#ffffff' },
+    };
+
+    return { ...baseStyle, ...variantTextStyles[variant] };
+  };
+
+  return (
+    <Pressable
+      style={getButtonStyle()}
+      onPress={onPress}
+      disabled={disabled}
+      android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+    >
+      <Text style={getTextStyle()}>{title}</Text>
+    </Pressable>
+  );
+}
+
 function ChecklistRow({ label, done }: { label: string; done: boolean }) {
   return (
-    <View style={styles.rowBetween}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <View style={[styles.pill, done ? styles.pillDone : styles.pillTodo]}>
-        <Text style={{ color: done ? '#1b5e20' : '#555', fontWeight: '600', fontSize: 12 }}>
-          {done ? 'Done' : 'To do'}
-        </Text>
-      </View>
+    <View style={[styles.pill, done ? styles.pillDone : styles.pillTodo]}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: done ? '#16a34a' : '#64748b' }}>
+        {done ? '✅' : '⭕'} {label}
+      </Text>
     </View>
   );
 }
 function prettyPrayer(p: PrayerKey) {
   switch (p) {
-    case 'fajr': return 'Fajr';
-    case 'dhuhr': return 'Dhuhr';
-    case 'asr': return 'Asr';
-    case 'maghrib': return 'Maghrib';
-    case 'isha': return 'Isha';
+    case 'fajr':
+      return 'Fajr';
+    case 'dhuhr':
+      return 'Dhuhr';
+    case 'asr':
+      return 'Asr';
+    case 'maghrib':
+      return 'Maghrib';
+    case 'isha':
+      return 'Isha';
   }
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 24, gap: 12, paddingBottom: 160 },
-  title: { fontSize: 22, fontWeight: '600' },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  card: { backgroundColor: '#f7f7f7', borderRadius: 10, padding: 12 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, backgroundColor: '#fff', marginBottom: 8 },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
-  rowLabel: { fontSize: 16 },
-  buddyBlock: { marginBottom: 12 },
-  checklistBox: { backgroundColor: '#fff', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: '#eee', marginTop: 6 },
-  pill: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-  pillDone: { backgroundColor: '#d6f5da' },
-  pillTodo: { backgroundColor: '#eee' },
-  nudgeBtn: (disabled: boolean) => ({
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: disabled ? '#eee' : '#eef5ff',
-    opacity: disabled ? 0.7 : 1
-  })
+  screen: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc' 
+  },
+  header: {
+    backgroundColor: '#ffffff',
+    paddingTop: 20,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  content: { 
+    padding: 20, 
+    gap: 16, 
+    paddingBottom: 160 
+  },
+  title: { 
+    fontSize: 28, 
+    fontWeight: '700', 
+    color: '#1e293b',
+    textAlign: 'center',
+    marginBottom: 4
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#64748b',
+    textAlign: 'center',
+    fontWeight: '400'
+  },
+  sectionTitle: { 
+    fontSize: 18, 
+    fontWeight: '600', 
+    marginBottom: 12,
+    color: '#334155'
+  },
+  card: { 
+    backgroundColor: '#ffffff', 
+    borderRadius: 16, 
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0'
+  },
+  input: { 
+    borderWidth: 2, 
+    borderColor: '#e2e8f0', 
+    borderRadius: 12, 
+    padding: 14, 
+    backgroundColor: '#f8fafc', 
+    marginBottom: 12,
+    fontSize: 16,
+    color: '#1e293b'
+  },
+  rowBetween: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingVertical: 8 
+  },
+  rowLabel: { 
+    fontSize: 16,
+    color: '#475569'
+  },
+  buddyBlock: { 
+    marginBottom: 16,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    padding: 16
+  },
+  checklistBox: { 
+    backgroundColor: '#ffffff', 
+    borderRadius: 12, 
+    paddingVertical: 16, 
+    paddingHorizontal: 16, 
+    borderWidth: 1, 
+    borderColor: '#e2e8f0', 
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  pill: { 
+    paddingVertical: 8, 
+    paddingHorizontal: 14, 
+    borderRadius: 24,
+    minWidth: 90,
+    alignItems: 'center'
+  },
+  pillDone: { 
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#16a34a'
+  },
+  pillTodo: { 
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1'
+  },
+  nudgeBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#3b82f6',
+    shadowColor: '#3b82f6',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  nudgeBtnDisabled: {
+    backgroundColor: '#e2e8f0',
+    shadowOpacity: 0
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 4
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center'
+  }
 });

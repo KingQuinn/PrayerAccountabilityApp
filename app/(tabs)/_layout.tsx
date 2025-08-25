@@ -15,43 +15,68 @@ type BuddyLink = {
 };
 
 export default function TabsLayout() {
-  console.log(dayjs);
   const [userId, setUserId] = useState<string | null>(null);
   const [showBuddyBadge, setShowBuddyBadge] = useState(false);
-  const today = useMemo(() => dayjs().format('YYYY-MM-DD'), []);
+  const [today, setToday] = useState(dayjs().format('YYYY-MM-DD'));
 
+  // Auth session tracking
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user?.id ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setUserId(s?.user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) =>
+      setUserId(s?.user?.id ?? null)
+    );
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Midnight rollover: tick every 15s to update "today"
+  useEffect(() => {
+    const tick = () => {
+      const d = dayjs().format('YYYY-MM-DD');
+      if (d !== today) setToday(d);
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, [today]);
+
   const refreshBadge = async () => {
-    if (!userId) return setShowBuddyBadge(false);
+    if (!userId) {
+      setShowBuddyBadge(false);
+      return;
+    }
 
     // Unseen incoming invites
-    const { data: links } = await supabase
+    const { data: links, error: linksErr } = await supabase
       .from('buddy_links')
       .select('id, created_by, receiver_seen_at, status, user_a, user_b')
       .or(`user_a.eq.${userId},user_b.eq.${userId}`)
       .eq('status', 'pending')
       .is('receiver_seen_at', null);
 
+    if (linksErr) {
+      // Optional: console.warn('buddy_links query error', linksErr.message);
+    }
+
     const unseenIncoming = (links || []).some((bl: BuddyLink) => bl.created_by !== userId);
 
     // Unseen nudges to me today
-    const { data: nudges } = await supabase
+    const { data: nudges, error: nudgesErr } = await supabase
       .from('nudges')
       .select('id')
       .eq('to_user', userId)
       .eq('day', today)
       .is('seen_at', null);
 
+    if (nudgesErr) {
+      // Optional: console.warn('nudges query error', nudgesErr.message);
+    }
+
     const unseenNudges = (nudges || []).length > 0;
 
     setShowBuddyBadge(unseenIncoming || unseenNudges);
   };
 
+  // Initial + polling + realtime channels
   useEffect(() => {
     if (!userId) return;
     refreshBadge();
@@ -59,13 +84,25 @@ export default function TabsLayout() {
 
     const ch1 = supabase
       .channel(`buddy_links_${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'buddy_links', filter: `user_a=eq.${userId}` }, refreshBadge)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'buddy_links', filter: `user_b=eq.${userId}` }, refreshBadge)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'buddy_links', filter: `user_a=eq.${userId}` },
+        refreshBadge
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'buddy_links', filter: `user_b=eq.${userId}` },
+        refreshBadge
+      )
       .subscribe();
 
     const ch2 = supabase
       .channel(`nudges_${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'nudges', filter: `to_user=eq.${userId}` }, refreshBadge)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'nudges', filter: `to_user=eq.${userId}` },
+        refreshBadge
+      )
       .subscribe();
 
     return () => {
@@ -79,7 +116,14 @@ export default function TabsLayout() {
     (focusedIcon: keyof typeof Ionicons.glyphMap, icon: keyof typeof Ionicons.glyphMap) =>
     ({ color, size, focused }: { color: string; size: number; focused: boolean }) =>
       (
-        <View style={{ width: size + 6, height: size + 6, alignItems: 'center', justifyContent: 'center' }}>
+        <View
+          style={{
+            width: size + 6,
+            height: size + 6,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
           <Ionicons name={focused ? focusedIcon : icon} size={size} color={color} />
           {showBuddyBadge && (
             <View
@@ -92,7 +136,7 @@ export default function TabsLayout() {
                 borderRadius: 5,
                 backgroundColor: '#ff3b30',
                 borderWidth: 1,
-                borderColor: '#fff'
+                borderColor: '#fff',
               }}
             />
           )}
@@ -108,8 +152,8 @@ export default function TabsLayout() {
         tabBarActiveTintColor: '#0077ff',
         tabBarStyle: {
           height: Platform.OS === 'android' ? 64 : 84,
-          paddingBottom: Platform.OS === 'android' ? 8 : 20
-        }
+          paddingBottom: Platform.OS === 'android' ? 8 : 20,
+        },
       }}
     >
       <Tabs.Screen
@@ -118,7 +162,7 @@ export default function TabsLayout() {
           title: 'Home',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
-          )
+          ),
         }}
       />
       <Tabs.Screen
@@ -127,14 +171,14 @@ export default function TabsLayout() {
           title: 'Prayers',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'time' : 'time-outline'} size={size} color={color} />
-          )
+          ),
         }}
       />
       <Tabs.Screen
         name="buddy"
         options={{
           title: 'Prayer Buddy',
-          tabBarIcon: withBadge('people', 'people-outline')
+          tabBarIcon: withBadge('people', 'people-outline'),
         }}
       />
       <Tabs.Screen
@@ -143,7 +187,7 @@ export default function TabsLayout() {
           title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
-          )
+          ),
         }}
       />
     </Tabs>

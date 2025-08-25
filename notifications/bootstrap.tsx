@@ -18,7 +18,7 @@ export default function NotificationsBootstrap() {
         await Notifications.setNotificationChannelAsync('adhan', {
           name: 'Adhan',
           importance: Notifications.AndroidImportance.MAX,
-          sound: 'adhan.wav',
+          sound: 'adhan1.wav',
           vibrationPattern: [0, 300, 250, 300],
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC
         });
