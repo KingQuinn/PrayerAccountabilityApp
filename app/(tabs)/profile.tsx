@@ -1,6 +1,23 @@
-import { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, Button, StyleSheet, TextInput, Alert, ActivityIndicator, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  FlatList,
+  Switch,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Pressable,
+  Button,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
+import { streakService } from '../../services/streakService';
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
 
@@ -21,6 +38,22 @@ type CalcMethodKey =
 type MadhabKey = 'Shafi' | 'Hanafi';
 type HighLatKey = 'MiddleOfTheNight' | 'SeventhOfTheNight' | 'TwilightAngle';
 
+interface Stat {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+}
+
+interface MenuItem {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  hasToggle?: boolean;
+  danger?: boolean;
+  toggleValue?: boolean;
+  onPress?: () => void;
+}
+
 const CALC_METHODS: CalcMethodKey[] = [
   'MuslimWorldLeague','MoonsightingCommittee','NorthAmerica','Egyptian','Karachi','UmmAlQura','Turkey','Dubai','Kuwait','Qatar','Singapore','Tehran'
 ];
@@ -28,6 +61,9 @@ const CALC_METHODS: CalcMethodKey[] = [
 export default function Profile() {
   const [session, setSession] = useState<SessionT>(null);
   const [loading, setLoading] = useState(true);
+  const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0, totalPrayers: 0 });
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
   const [calcMethod, setCalcMethod] = useState<CalcMethodKey>('MuslimWorldLeague');
   const [madhab, setMadhab] = useState<MadhabKey>('Shafi');
@@ -45,7 +81,7 @@ export default function Profile() {
       if (!session?.user?.id) { setLoading(false); return; }
       const { data, error } = await supabase
         .from('profiles')
-        .select('calc_method, madhab, high_lat_rule, grace_minutes, tz')
+        .select('calc_method, madhab, high_lat_rule, grace_minutes, tz, current_streak, longest_streak')
         .eq('id', session.user.id)
         .single();
 
@@ -54,11 +90,32 @@ export default function Profile() {
         if (data.madhab) setMadhab(data.madhab as MadhabKey);
         if (data.high_lat_rule) setHighLat(data.high_lat_rule as HighLatKey);
         if (data.grace_minutes != null) setGraceMinutes(String(data.grace_minutes));
+        
+        // Load streak data
+        setStreakData({
+          currentStreak: data.current_streak || 0,
+          longestStreak: data.longest_streak || 0,
+          totalPrayers: 0 // Will be calculated from prayer_completions
+        });
       } else {
         // Ensure row exists with timezone
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         await supabase.from('profiles').upsert({ id: session?.user?.id, tz }, { onConflict: 'id' });
       }
+      
+      // Load total prayers count
+      if (session?.user?.id) {
+        const { data: prayerData } = await supabase
+          .from('prayer_completions')
+          .select('id')
+          .eq('user_id', session.user.id);
+        
+        setStreakData(prev => ({
+          ...prev,
+          totalPrayers: prayerData?.length || 0
+        }));
+      }
+      
       setLoading(false);
     };
     load();
@@ -92,65 +149,164 @@ export default function Profile() {
     await supabase.auth.signOut();
   };
 
+  const stats: Stat[] = [
+    { label: 'Prayer Streak', value: `${streakData.currentStreak} days`, icon: 'trophy-outline', color: '#F59E0B' },
+    { label: 'Total Prayers', value: `${streakData.totalPrayers}`, icon: 'calendar-outline', color: '#4F46E5' },
+    { label: 'Longest Streak', value: `${streakData.longestStreak} days`, icon: 'flame-outline', color: '#EF4444' },
+  ];
+
+  const menuItems: MenuItem[] = [
+    { icon: 'notifications-outline', label: 'Notifications', hasToggle: true, toggleValue: notificationsEnabled },
+    { icon: 'settings-outline', label: 'Prayer Settings', onPress: () => setShowSettings(!showSettings) },
+    { icon: 'shield-outline', label: 'Privacy Settings' },
+    { icon: 'people-outline', label: 'Invite Friends' },
+    { icon: 'log-out-outline', label: 'Sign Out', danger: true, onPress: signOut },
+  ];
+
+  const renderStat = ({ item }: { item: Stat }) => (
+    <View style={styles.statItem}>
+      <Ionicons name={item.icon} size={24} color={item.color} />
+      <Text style={styles.statValue}>{item.value}</Text>
+      <Text style={styles.statLabel}>{item.label}</Text>
+    </View>
+  );
+
+  const renderMenuItem = ({ item, index }: { item: MenuItem; index: number }) => (
+    <TouchableOpacity
+      style={[
+        styles.menuItem,
+        index === menuItems.length - 1 && styles.lastMenuItem,
+      ]}
+      onPress={item.onPress}
+    >
+      <View style={styles.menuLeft}>
+        <Ionicons
+          name={item.icon}
+          size={20}
+          color={item.danger ? '#EF4444' : '#6B7280'}
+        />
+        <Text style={[styles.menuText, item.danger && styles.dangerText]}>
+          {item.label}
+        </Text>
+      </View>
+      
+      {item.hasToggle ? (
+        <Switch
+          value={item.toggleValue}
+          onValueChange={setNotificationsEnabled}
+          trackColor={{ false: '#D1D5DB', true: '#4F46E5' }}
+          thumbColor="white"
+        />
+      ) : (
+        <Ionicons name="chevron-forward-outline" size={20} color="#9CA3AF" />
+      )}
+    </TouchableOpacity>
+  );
+
+  const userEmail = session?.user?.email || 'User';
+  const firstName = userEmail.split('@')[0] || 'A';
+
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Profile</Text>
-
-        {loading ? (
-          <ActivityIndicator size="small" />
-        ) : (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.label}>Email</Text>
-              <Text style={{ fontWeight: '600', marginBottom: 8 }}>{session?.user?.email}</Text>
-
-              <Text style={styles.label}>Calculation Method</Text>
-              <RowSelector
-                value={calcMethod}
-                onNext={() => setCalcMethod(cycle(CALC_METHODS, calcMethod))}
-                display={prettyCalc(calcMethod)}
-              />
-
-              <Text style={styles.label}>Madhab</Text>
-              <RowSelector
-                value={madhab}
-                onNext={() => setMadhab(madhab === 'Shafi' ? 'Hanafi' : 'Shafi')}
-                display={madhab}
-              />
-
-              <Text style={styles.label}>High-latitude rule</Text>
-              <RowSelector
-                value={highLat}
-                onNext={() =>
-                  setHighLat(
-                    highLat === 'MiddleOfTheNight'
-                      ? 'SeventhOfTheNight'
-                      : highLat === 'SeventhOfTheNight'
-                      ? 'TwilightAngle'
-                      : 'MiddleOfTheNight'
-                  )
-                }
-                display={prettyHighLat(highLat)}
-              />
-
-              <Text style={styles.label}>Grace minutes</Text>
-              <TextInput
-                value={graceMinutes}
-                onChangeText={setGraceMinutes}
-                keyboardType="number-pad"
-                style={styles.input}
-                placeholder="e.g. 30"
-              />
-
-              <View style={{ height: 8 }} />
-              <Button title="Save preferences" onPress={save} />
+    <SafeAreaView style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <LinearGradient
+          colors={['#4F46E5', '#7C3AED']}
+          style={styles.header}
+        >
+          <View style={styles.profileContainer}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{firstName[0]?.toUpperCase() || 'A'}</Text>
             </View>
-          </>
-        )}
+            <Text style={styles.name}>{firstName}</Text>
+            <Text style={styles.email}>{userEmail}</Text>
+            <TouchableOpacity style={styles.editButton} onPress={() => setShowSettings(!showSettings)}>
+              <Text style={styles.editButtonText}>Prayer Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
 
-        <View style={{ height: 12 }} />
-        <Button title="Sign Out" color="#b00" onPress={signOut} />
+        <View style={styles.content}>
+          {loading ? (
+            <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 50 }} />
+          ) : (
+            <>
+              {/* Stats */}
+              <View style={styles.statsCard}>
+                <FlatList
+                  data={stats}
+                  renderItem={renderStat}
+                  keyExtractor={(item) => item.label}
+                  numColumns={3}
+                  scrollEnabled={false}
+                />
+              </View>
+
+              {/* Prayer Settings (Collapsible) */}
+              {showSettings && (
+                <View style={styles.settingsCard}>
+                  <Text style={styles.settingsTitle}>Prayer Settings</Text>
+                  
+                  <Text style={styles.label}>Calculation Method</Text>
+                  <RowSelector
+                    value={calcMethod}
+                    onNext={() => setCalcMethod(cycle(CALC_METHODS, calcMethod))}
+                    display={prettyCalc(calcMethod)}
+                  />
+
+                  <Text style={styles.label}>Madhab</Text>
+                  <RowSelector
+                    value={madhab}
+                    onNext={() => setMadhab(madhab === 'Shafi' ? 'Hanafi' : 'Shafi')}
+                    display={madhab}
+                  />
+
+                  <Text style={styles.label}>High-latitude rule</Text>
+                  <RowSelector
+                    value={highLat}
+                    onNext={() =>
+                      setHighLat(
+                        highLat === 'MiddleOfTheNight'
+                          ? 'SeventhOfTheNight'
+                          : highLat === 'SeventhOfTheNight'
+                          ? 'TwilightAngle'
+                          : 'MiddleOfTheNight'
+                      )
+                    }
+                    display={prettyHighLat(highLat)}
+                  />
+
+                  <Text style={styles.label}>Grace minutes</Text>
+                  <TextInput
+                    value={graceMinutes}
+                    onChangeText={setGraceMinutes}
+                    keyboardType="number-pad"
+                    style={styles.input}
+                    placeholder="e.g. 30"
+                  />
+
+                  <View style={{ height: 16 }} />
+                  <TouchableOpacity style={styles.saveButton} onPress={save}>
+                    <Text style={styles.saveButtonText}>Save Preferences</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Menu Items */}
+              <View style={styles.menuCard}>
+                <FlatList
+                  data={menuItems}
+                  renderItem={renderMenuItem}
+                  keyExtractor={(item) => item.label}
+                  scrollEnabled={false}
+                />
+              </View>
+
+              {/* App Version */}
+              <Text style={styles.version}>Prayer Buddy v1.0.0</Text>
+            </>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -201,11 +357,160 @@ function prettyHighLat(v: HighLatKey) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 24, gap: 16 },
-  title: { fontSize: 22, fontWeight: '600' },
-  card: { backgroundColor: '#f7f7f7', borderRadius: 10, padding: 12, gap: 10 },
-  label: { fontSize: 14, opacity: 0.7 },
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 20,
+  },
+  profileContainer: {
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    color: 'white',
+    fontSize: 36,
+    fontWeight: 'bold',
+  },
+  name: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  email: {
+    color: '#C7D2FE',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  editButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  editButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  content: {
+    padding: 20,
+    marginTop: -16,
+  },
+  statsCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  settingsCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  settingsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  menuCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  lastMenuItem: {
+    borderBottomWidth: 0,
+  },
+  menuLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuText: {
+    fontSize: 16,
+    color: '#1F2937',
+    marginLeft: 12,
+  },
+  dangerText: {
+    color: '#EF4444',
+  },
+  version: {
+    textAlign: 'center',
+    color: '#9CA3AF',
+    fontSize: 12,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  saveButton: {
+    backgroundColor: '#4F46E5',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Keep existing styles for settings
+  label: { fontSize: 14, opacity: 0.7, marginTop: 12, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, backgroundColor: '#fff' },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
   buttonSmall: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#eef5ff' }

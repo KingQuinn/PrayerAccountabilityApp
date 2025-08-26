@@ -1,5 +1,5 @@
 import { useAudioPlayer } from 'expo-audio';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 class AudioNotificationService {
@@ -76,18 +76,19 @@ class AudioNotificationService {
     data?: any;
   }) {
     try {
-      // Schedule a silent notification that we'll handle with audio
+      // Schedule notification with adhan sound for background, custom audio for foreground
       await Notifications.scheduleNotificationAsync({
         content: {
           title,
           body,
           data: { ...data, useCustomAudio: true },
-          // Use default sound as fallback for background
-          sound: 'default',
+          // Use adhan sound for background notifications
+          sound: Platform.OS === 'ios' ? 'adhan1.wav' : 'adhan1.wav',
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: triggerDate,
+          ...(Platform.OS === 'android' && { channelId: 'adhan' }),
         },
       });
       

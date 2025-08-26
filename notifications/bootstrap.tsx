@@ -22,7 +22,7 @@ export default function NotificationsBootstrap() {
         await Notifications.setNotificationChannelAsync('adhan', {
           name: 'Adhan',
           importance: Notifications.AndroidImportance.MAX,
-          sound: 'default', // Use default as fallback
+          sound: 'adhan1.wav', // Use custom adhan sound
           vibrationPattern: [0, 300, 250, 300],
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC
         });
@@ -30,14 +30,18 @@ export default function NotificationsBootstrap() {
 
       Notifications.setNotificationHandler({
         handleNotification: async (notification) => {
-          // Handle custom audio playback
+          // Handle custom audio playback for foreground
           await audioNotificationService.handleNotificationReceived(notification);
+          
+          const notificationData = notification.request.content.data;
+          const isPrayerNotification = notificationData?.type === 'prayer' || notificationData?.type === 'test';
           
           return {
             shouldShowAlert: true,
             shouldShowBanner: true,
             shouldShowList: true,
-            shouldPlaySound: false, // We handle sound manually
+            // Play system sound for background notifications, custom audio handles foreground
+            shouldPlaySound: isPrayerNotification && !audioNotificationService.isAppInForeground(),
             shouldSetBadge: false
           };
         }

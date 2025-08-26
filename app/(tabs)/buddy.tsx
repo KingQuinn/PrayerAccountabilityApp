@@ -71,25 +71,41 @@ export default function Buddy() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Update user's last active timestamp
+  const updateLastActive = async () => {
+    if (!me) return;
+    try {
+      await streakService.updateLastActive(me);
+    } catch (error) {
+      console.error('Error updating last active:', error);
+    }
+  };
+
   // Boot + periodic refresh
   useEffect(() => {
     if (!me) return;
     const boot = async () => {
+      await updateLastActive(); // Update last active on component mount
       await Promise.all([loadLinks(), loadFeed(), loadOutgoingNudges(), loadStreakData()]);
       setLoading(false);
     };
     boot();
 
-    // Shorter polling for frequent updates
-    const pollId = setInterval(() => {
+    // Optimized polling - less frequent for streak data, more frequent for feed
+    const feedPollId = setInterval(() => {
       loadFeed();
       loadOutgoingNudges();
-      loadStreakData();
     }, 8000);
+    
+    // Less frequent polling for streak data since it changes less often
+    const streakPollId = setInterval(() => {
+      loadStreakData();
+    }, 30000); // 30 seconds instead of 8 seconds
 
-    // Also refresh on app resume
+    // Also refresh on app resume and update last active
     const appSub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
+        updateLastActive();
         loadFeed();
         loadOutgoingNudges();
         loadStreakData();
@@ -97,7 +113,8 @@ export default function Buddy() {
     });
 
     return () => {
-      clearInterval(pollId);
+      clearInterval(feedPollId);
+      clearInterval(streakPollId);
       appSub.remove();
     };
   }, [me, today]);
@@ -129,6 +146,8 @@ export default function Buddy() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'buddy_links', filter: `user_a=eq.${me}` }, loadLinks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'buddy_links', filter: `user_b=eq.${me}` }, loadLinks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'nudges', filter: `from_user=eq.${me}` }, loadOutgoingNudges)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, loadStreakData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prayer_completions' }, loadStreakData)
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
@@ -191,9 +210,30 @@ export default function Buddy() {
     
     try {
       const streakResults = await streakService.getMultipleUsersStreakData(ids);
-      setStreakData(streakResults);
+      
+      // Only update if we got valid data, preserve existing data on errors
+      if (streakResults && Object.keys(streakResults).length > 0) {
+        setStreakData(prevData => {
+          const newData = { ...prevData };
+          
+          // Update only the users we got data for, preserve others
+          Object.keys(streakResults).forEach(userId => {
+            const userData = streakResults[userId];
+            if (userData && (userData.currentStreak >= 0 || userData.longestStreak >= 0)) {
+              newData[userId] = {
+                currentStreak: userData.currentStreak || 0,
+                longestStreak: userData.longestStreak || 0,
+                lastActive: userData.lastActive
+              };
+            }
+          });
+          
+          return newData;
+        });
+      }
     } catch (error) {
       console.error('Error loading streak data:', error);
+      // Don't clear existing streak data on error - preserve what we have
     }
   };
 
