@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useSession } from '../_layout';
+import { streakService } from '../../services/streakService';
 
 export default function Login() {
   const session = useSession();
@@ -30,6 +31,17 @@ export default function Login() {
       .from('profiles')
       .upsert({ id: userId, tz, email: emailVal }, { onConflict: 'id' });
     if (error) console.warn('Profile upsert error', error.message);
+    
+    // Initialize streak tracking for new or existing users without last_active_at
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('last_active_at')
+      .eq('id', userId)
+      .single();
+    
+    if (!profile?.last_active_at) {
+      await streakService.initializeUserStreak(userId);
+    }
   };
 
   const signUp = async () => {

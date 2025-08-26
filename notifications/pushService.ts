@@ -31,7 +31,23 @@ class PushNotificationService {
       }
 
       // Get push token
-      const token = await Notifications.getExpoPushTokenAsync();
+      let token;
+      try {
+        // Try with project ID first if available
+        if (process.env.EXPO_PUBLIC_EAS_PROJECT_ID) {
+          token = await Notifications.getExpoPushTokenAsync({
+            projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID
+          });
+        } else {
+          // Fallback for development - try without project ID
+          token = await Notifications.getExpoPushTokenAsync();
+        }
+      } catch (error) {
+         console.warn('Could not get push token:', error instanceof Error ? error.message : String(error));
+         // In development, we can continue without push notifications
+         this.isInitialized = true;
+         return;
+       }
       
       console.log('Push token obtained:', token.data);
       
@@ -117,9 +133,14 @@ class PushNotificationService {
 
   async refreshPushToken(userId: string) {
     try {
-      const token = await Notifications.getExpoPushTokenAsync({
-        projectId: 'YOUR-EAS-PROJECT-ID'
-      });
+      let token;
+      if (process.env.EXPO_PUBLIC_EAS_PROJECT_ID) {
+        token = await Notifications.getExpoPushTokenAsync({
+          projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID
+        });
+      } else {
+        token = await Notifications.getExpoPushTokenAsync();
+      }
       
       if (token.data) {
         await this.storePushToken(userId, token.data);

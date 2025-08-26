@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState, ViewStyle } from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState, ViewStyle, FlatList, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { supabase } from '../../lib/supabase';
 import { scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
 import { pushNotificationService } from '../../notifications/pushService';
+import { streakService } from '../../services/streakService';
 
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
@@ -23,6 +25,21 @@ type ProfileLite = { id: string; email: string | null };
 type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
 const PRAYERS: PrayerKey[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
+type TabType = 'buddies' | 'requests';
+
+interface BuddyData {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  streak: number;
+  todayPrayers: string;
+  status: 'online' | 'offline';
+  lastActive: string;
+  link: BuddyLink;
+  todayMap: Record<string, boolean>;
+}
+
 export default function Buddy() {
   const [session, setSession] = useState<SessionT>(null);
   const me = session?.user?.id || null;
@@ -35,7 +52,7 @@ export default function Buddy() {
   const [profiles, setProfiles] = useState<Record<string, ProfileLite>>({});
   const [loading, setLoading] = useState(true);
 
-  // buddies’ check-ins for today: userId -> prayer -> boolean
+  // buddies' check-ins for today: userId -> prayer -> boolean
   const [feed, setFeed] = useState<Record<string, Partial<Record<PrayerKey, boolean>>>>({});
   const [refreshing, setRefreshing] = useState(false);
 
@@ -44,6 +61,9 @@ export default function Buddy() {
 
   // Temporary cooldown to prevent accidental rapid-fire nudges: userId -> expiresAt ms
   const [cooldown, setCooldown] = useState<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState<TabType>('buddies');
+  const [searchText, setSearchText] = useState('');
+  const [streakData, setStreakData] = useState<Record<string, { currentStreak: number; longestStreak: number; lastActive: string | null }>>({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -55,7 +75,7 @@ export default function Buddy() {
   useEffect(() => {
     if (!me) return;
     const boot = async () => {
-      await Promise.all([loadLinks(), loadFeed(), loadOutgoingNudges()]);
+      await Promise.all([loadLinks(), loadFeed(), loadOutgoingNudges(), loadStreakData()]);
       setLoading(false);
     };
     boot();
@@ -64,6 +84,7 @@ export default function Buddy() {
     const pollId = setInterval(() => {
       loadFeed();
       loadOutgoingNudges();
+      loadStreakData();
     }, 8000);
 
     // Also refresh on app resume
@@ -71,6 +92,7 @@ export default function Buddy() {
       if (s === 'active') {
         loadFeed();
         loadOutgoingNudges();
+        loadStreakData();
       }
     });
 
@@ -160,6 +182,19 @@ export default function Buddy() {
       map[u][p] = !!row.completed;
     });
     setFeed(map);
+  };
+
+  const loadStreakData = async () => {
+    if (!me) return;
+    const ids = acceptedBuddies();
+    if (!ids.length) return setStreakData({});
+    
+    try {
+      const streakResults = await streakService.getMultipleUsersStreakData(ids);
+      setStreakData(streakResults);
+    } catch (error) {
+      console.error('Error loading streak data:', error);
+    }
   };
 
   const loadOutgoingNudges = async () => {
@@ -318,154 +353,200 @@ export default function Buddy() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadLinks(), loadFeed(), loadOutgoingNudges()]);
+    await Promise.all([loadLinks(), loadFeed(), loadOutgoingNudges(), loadStreakData()]);
     setRefreshing(false);
-    // Cooldowns naturally expire; pressing refresh doesn’t block nudging.
+    // Cooldowns naturally expire; pressing refresh doesn't block nudging.
   };
 
   const pendingIncoming = links.filter((bl) => bl.status === 'pending' && bl.created_by !== me);
   const pendingOutgoing = links.filter((bl) => bl.status === 'pending' && bl.created_by === me);
   const accepted = links.filter((bl) => bl.status === 'accepted');
 
-  return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title}>🤝 Prayer Buddy</Text>
-        <Text style={styles.subtitle}>Stay accountable with your prayer partners 🕌</Text>
+  // Transform accepted buddies into BuddyData format
+  const buddiesData: BuddyData[] = accepted.map((bl) => {
+    const other = me === bl.user_a ? bl.user_b : bl.user_a;
+    const profile = profiles[other];
+    const todayMap = feed[other] || {};
+    const completedPrayers = Object.values(todayMap).filter(Boolean).length;
+    const name = profile?.email?.split('@')[0] || 'Unknown';
+    const userStreakData = streakData[other];
+    
+    return {
+      id: other,
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      email: profile?.email || other,
+      avatar: name.charAt(0).toUpperCase(),
+      streak: userStreakData?.currentStreak || 0,
+      todayPrayers: `${completedPrayers}/5`,
+      status: streakService.isUserOnline(userStreakData?.lastActive) ? 'online' : 'offline',
+      lastActive: streakService.formatLastActive(userStreakData?.lastActive),
+      link: bl,
+      todayMap
+    };
+  });
+
+  // Filter buddies based on search text
+  const filteredBuddies = buddiesData.filter(buddy => 
+    buddy.name.toLowerCase().includes(searchText.toLowerCase()) ||
+    buddy.email.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  // Transform pending requests into request format
+  const requestsData = pendingIncoming.map((bl) => {
+    const other = me === bl.user_a ? bl.user_b : bl.user_a;
+    const profile = profiles[other];
+    const name = profile?.email?.split('@')[0] || 'Unknown';
+    
+    return {
+      id: bl.id,
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      email: profile?.email || other,
+      avatar: name.charAt(0).toUpperCase(),
+      mutualFriends: Math.floor(Math.random() * 10), // TODO: Implement real mutual friends
+      link: bl
+    };
+  });
+
+  // Render functions for the new design
+  const renderBuddy = ({ item }: { item: BuddyData }) => {
+    const next = nextDuePrayer(item.id);
+    const active = canNudge(item.id);
+    const isCooling = !!cooldown[item.id] && cooldown[item.id] > Date.now();
+
+    return (
+      <View style={styles.buddyCard}>
+        <View style={styles.buddyHeader}>
+          <View style={styles.buddyAvatarContainer}>
+            <View style={styles.buddyAvatar}>
+              <Text style={styles.buddyAvatarText}>{item.avatar}</Text>
+            </View>
+            <View style={[styles.statusIndicator, { backgroundColor: item.status === 'online' ? '#10B981' : '#6B7280' }]} />
+          </View>
+          
+          <View style={styles.buddyInfo}>
+            <Text style={styles.buddyName}>{item.name}</Text>
+            <Text style={styles.lastActive}>Last active: {item.lastActive}</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.nudgeBtn, (!active || isCooling) && styles.nudgeBtnDisabled]}
+            disabled={!active || isCooling}
+            onPress={() => onNudgePress(item.id)}
+          >
+            <Ionicons 
+              name="hand-right-outline" 
+              size={20} 
+              color={!active || isCooling ? '#9CA3AF' : '#4F46E5'} 
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.buddyStats}>
+          <View style={styles.statCard}>
+            <View style={styles.statHeader}>
+              <Ionicons name="trophy-outline" size={16} color="#F59E0B" />
+              <Text style={styles.statValue}>{item.streak}</Text>
+            </View>
+            <Text style={styles.statLabel}>Day Streak</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{item.todayPrayers}</Text>
+            <Text style={styles.statLabel}>Today's Prayers</Text>
+          </View>
+        </View>
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+    );
+  };
+
+  const renderRequest = ({ item }: { item: any }) => (
+    <View style={styles.requestCard}>
+      <View style={styles.requestHeader}>
+        <View style={styles.requestAvatar}>
+          <Text style={styles.requestAvatarText}>{item.avatar}</Text>
+        </View>
+        
+        <View style={styles.requestInfo}>
+          <Text style={styles.requestName}>{item.name}</Text>
+          <Text style={styles.mutualFriends}>{item.mutualFriends} mutual friends</Text>
+        </View>
+      </View>
+
+      <View style={styles.requestActions}>
+        <TouchableOpacity style={styles.acceptButton} onPress={() => acceptInvite(item.link.id)}>
+          <Text style={styles.acceptButtonText}>Accept</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.declineButton} onPress={() => declineOrRemove(item.link.id)}>
+          <Text style={styles.declineButtonText}>Decline</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Prayer Buddies</Text>
+        <TouchableOpacity style={styles.addButton}>
+          <Ionicons name="add" size={24} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.content}>
+        {/* Search */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <TextInput 
+            style={styles.searchInput}
+            placeholder="Search buddies..."
+            placeholderTextColor="#9CA3AF"
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </View>
+
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'buddies' && styles.activeTab]}
+            onPress={() => setActiveTab('buddies')}
+          >
+            <Text style={[styles.tabText, activeTab === 'buddies' && styles.activeTabText]}>
+              My Buddies ({filteredBuddies.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'requests' && styles.activeTab]}
+            onPress={() => setActiveTab('requests')}
+          >
+            <Text style={[styles.tabText, activeTab === 'requests' && styles.activeTabText]}>
+              Requests ({requestsData.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {loading ? (
-          <ActivityIndicator size="small" />
+          <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 50 }} />
+        ) : activeTab === 'buddies' ? (
+          <FlatList 
+            data={filteredBuddies}
+            renderItem={renderBuddy}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContainer}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
         ) : (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>📧 Invite a buddy</Text>
-              <TextInput
-                placeholder="Friend’s email"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                style={styles.input}
-                value={inviteEmail}
-                onChangeText={setInviteEmail}
-              />
-              <CustomButton 
-                title={inviting ? 'Sending...' : '📧 Send invite'} 
-                onPress={sendInvite} 
-                disabled={inviting}
-                variant="primary"
-              />
-              <View style={{ height: 12 }} />
-              <CustomButton 
-                title={refreshing ? 'Refreshing...' : '🔄 Refresh'} 
-                onPress={onRefresh}
-                variant="secondary"
-              />
-              <View style={{ height: 12 }} />
-              <CustomButton 
-                title="🔊 Test Audio" 
-                onPress={testAudioNotification} 
-                variant="primary"
-              />
-              <View style={{ height: 12 }} />
-              <CustomButton 
-                title="👁️ Mark nudges as seen" 
-                onPress={markNudgesSeen}
-                variant="secondary"
-                size="small"
-              />
-
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>⏳ Pending invites</Text>
-              {pendingIncoming.length === 0 && pendingOutgoing.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyStateText}>📭 No pending invites</Text>
-                    <Text style={styles.emptyStateSubtext}>Send an invite above to get started!</Text>
-                  </View>
-                ) : (
-                <>
-                  {pendingIncoming.map((bl) => {
-                    const other = me === bl.user_a ? bl.user_b : bl.user_a;
-                    const email = profiles[other]?.email || other;
-                    return (
-                      <View key={bl.id} style={styles.rowBetween}>
-                        <Text>From {email}</Text>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <CustomButton title="✅ Accept" onPress={() => acceptInvite(bl.id)} variant="success" size="small" />
-                          <CustomButton title="❌ Decline" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
-                        </View>
-                      </View>
-                    );
-                  })}
-                  {pendingOutgoing.map((bl) => {
-                    const other = me === bl.user_a ? bl.user_b : bl.user_a;
-                    const email = profiles[other]?.email || other;
-                    return (
-                      <View key={bl.id} style={styles.rowBetween}>
-                        <Text>To {email} (waiting)</Text>
-                        <CustomButton title="🚫 Cancel" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
-                      </View>
-                    );
-                  })}
-                </>
-              )}
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>👥 Your buddies (today)</Text>
-              {accepted.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyStateText}>👤 No prayer buddies yet</Text>
-                    <Text style={styles.emptyStateSubtext}>Invite friends to start your accountability journey!</Text>
-                  </View>
-                ) : (
-                accepted.map((bl) => {
-                  const other = me === bl.user_a ? bl.user_b : bl.user_a;
-                  const email = profiles[other]?.email || other;
-                  const todayMap = feed[other] || {};
-                  const next = nextDuePrayer(other);
-                  const active = canNudge(other);
-                  const isCooling = !!cooldown[other] && cooldown[other] > Date.now();
-
-                  return (
-                    <View key={bl.id} style={styles.buddyBlock}>
-                      <View style={styles.rowBetween}>
-                        <Text style={{ fontWeight: '600' }}>{email}</Text>
-                        <CustomButton title="🗑️ Remove" onPress={() => declineOrRemove(bl.id)} variant="danger" size="small" />
-                      </View>
-
-                      <View style={styles.checklistBox}>
-                        <ChecklistRow label="🌅 Fajr" done={todayMap.fajr === true} />
-                        <ChecklistRow label="☀️ Dhuhr" done={todayMap.dhuhr === true} />
-                        <ChecklistRow label="🌤️ Asr" done={todayMap.asr === true} />
-                        <ChecklistRow label="🌅 Maghrib" done={todayMap.maghrib === true} />
-                        <ChecklistRow label="🌙 Isha" done={todayMap.isha === true} />
-                      </View>
-
-                      <View style={[styles.rowBetween, { marginTop: 8 }]}>
-                        <Text style={{ opacity: 0.7 }}>
-                          {next ? `Next due: ${prettyPrayer(next)}` : 'All prayers completed today'}
-                        </Text>
-                        <Pressable
-                          disabled={!active || isCooling}
-                          onPress={() => onNudgePress(other)}
-                          style={[styles.nudgeBtn, (!active || isCooling) && styles.nudgeBtnDisabled]}
-                        >
-                          <Text style={{ color: !active || isCooling ? '#64748b' : '#ffffff', fontWeight: '600' }}>
-                            {!active ? 'No nudge needed' : isCooling ? 'Nudged' : 'Nudge'}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-          </>
+          <FlatList 
+            data={requestsData}
+            renderItem={renderRequest}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContainer}
+          />
         )}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -559,17 +640,102 @@ function prettyPrayer(p: PrayerKey) {
 }
 
 const styles = StyleSheet.create({
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8fafc' 
+  },
   screen: { 
     flex: 1, 
     backgroundColor: '#f8fafc' 
   },
   header: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#4F46E5',
     paddingTop: 20,
     paddingBottom: 24,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  content: { 
+    flex: 1,
+    paddingHorizontal: 16
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginVertical: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2
+  },
+  searchIcon: {
+    marginRight: 12
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1F2937'
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  activeTab: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280'
+  },
+  activeTabText: {
+    color: '#4F46E5',
+    fontWeight: '600'
+  },
+  listContainer: {
+    paddingBottom: 20
+  },
+  buddyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -579,17 +745,169 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2
   },
-  content: { 
-    padding: 20, 
-    gap: 16, 
-    paddingBottom: 160 
+  buddyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  buddyAvatarContainer: {
+    position: 'relative',
+    marginRight: 12
+  },
+  buddyAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  buddyAvatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff'
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#ffffff'
+  },
+  buddyInfo: {
+    flex: 1
+  },
+  buddyName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4
+  },
+  lastActive: {
+    fontSize: 14,
+    color: '#6B7280'
+  },
+  messageButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6'
+  },
+  buddyStats: {
+    flexDirection: 'row',
+    gap: 12
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center'
+  },
+  statHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginLeft: 4
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center'
+  },
+  requestCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  requestAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  requestAvatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff'
+  },
+  requestInfo: {
+    flex: 1
+  },
+  requestName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4
+  },
+  mutualFriends: {
+    fontSize: 14,
+    color: '#6B7280'
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 12
+  },
+  acceptButton: {
+    flex: 1,
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center'
+  },
+  acceptButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff'
+  },
+  declineButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center'
+  },
+  declineButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280'
   },
   title: { 
-    fontSize: 28, 
+    fontSize: 24, 
     fontWeight: '700', 
-    color: '#1e293b',
-    textAlign: 'center',
-    marginBottom: 4
+    color: '#ffffff'
+  },
+  addButton: {
+    backgroundColor: '#6366F1',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   subtitle: {
     fontSize: 16,

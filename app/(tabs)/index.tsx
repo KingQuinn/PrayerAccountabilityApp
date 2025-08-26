@@ -32,6 +32,7 @@ import * as Notifications from 'expo-notifications';
 import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS } from '../../notifications/adhanScheduler';
 import { supabase } from '../../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { streakService } from '../../services/streakService';
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
 
@@ -160,6 +161,8 @@ export default function Home() {
         if (uid) {
           loadChecklistForDay(today, uid);
           loadUnseenNudgesCount(today, uid);
+          // Update last active timestamp when app becomes active
+          streakService.updateLastActive(uid);
         }
       }
     });
@@ -247,6 +250,17 @@ export default function Home() {
       .from('profiles')
       .upsert({ id: userId, tz }, { onConflict: 'id' });
     if (error) console.warn('Profile upsert error', error.message);
+    
+    // Initialize streak tracking for new or existing users without last_active_at
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('last_active_at')
+      .eq('id', userId)
+      .single();
+    
+    if (!profile?.last_active_at) {
+      await streakService.initializeUserStreak(userId);
+    }
   };
 
   // Count unseen nudges strictly for "today"
@@ -258,6 +272,30 @@ export default function Home() {
       .eq('day', dayStr)
       .is('seen_at', null);
     if (!error) setNudgedCount((rows || []).length);
+  };
+
+  // Mark all today's incoming nudges as seen (clears Home banner)
+  const markNudgesSeen = async () => {
+    if (!uid) return;
+    const { error } = await supabase
+      .from('nudges')
+      .update({ seen_at: new Date().toISOString() })
+      .eq('to_user', uid)
+      .eq('day', today)
+      .is('seen_at', null);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setNudgedCount(0); // Clear the count immediately
+      // Broadcast to other screens that nudges were seen
+      if (bus) {
+        bus.send({
+          type: 'broadcast',
+          event: 'nudges_seen',
+          payload: { day: today }
+        });
+      }
+    }
   };
 
   const loadBuddyUpdates = async (userId: string) => {
@@ -412,9 +450,23 @@ export default function Home() {
     if (!error) {
       setSaveMsg('Mashallah');
       setTimeout(() => setSaveMsg(null), 1500);
+      
+      // Update last active timestamp when user completes a prayer
+      await streakService.updateLastActive(uid);
+      
       const willBeAllDone = PRAYERS.every((p) => (p === prayer ? completed : checklist[p]));
       if (willBeAllDone) {
+        // Save to prayer_completions table for streak tracking
+        await supabase
+          .from('prayer_completions')
+          .upsert({
+            user_id: uid,
+            day: today,
+            completed_at: new Date().toISOString()
+          }, { onConflict: 'user_id,day' });
+        
         await maybeShowCongrats(today, uid);
+        // Streak will be automatically updated by the database trigger
       }
     }
     setSaving(false);
@@ -547,20 +599,39 @@ export default function Home() {
   const renderBuddyUpdate = ({ item }: { item: BuddyUpdate }) => {
     const isNudgeAlert = item.name === 'Nudge Alert';
     
+    if (isNudgeAlert) {
+      return (
+        <TouchableOpacity 
+          style={[styles.buddyUpdateItem, styles.nudgeUpdateItem]}
+          onPress={markNudgesSeen}
+        >
+          <View style={[styles.buddyAvatar, styles.nudgeAvatar]}>
+            <Text style={styles.buddyAvatarText}>🔔</Text>
+          </View>
+          <View style={styles.buddyUpdateContent}>
+            <Text style={styles.buddyUpdateText}>
+              <Text style={styles.nudgeText}>{item.prayer}</Text>
+            </Text>
+            <Text style={styles.buddyUpdateTime}>Tap to dismiss</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.dismissButton}
+            onPress={markNudgesSeen}
+          >
+            <Ionicons name="close" size={16} color="#92400E" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    }
+    
     return (
-      <View style={[styles.buddyUpdateItem, isNudgeAlert && styles.nudgeUpdateItem]}>
-        <View style={[styles.buddyAvatar, isNudgeAlert && styles.nudgeAvatar]}>
-          <Text style={styles.buddyAvatarText}>
-            {isNudgeAlert ? '🔔' : item.name[0]}
-          </Text>
+      <View style={styles.buddyUpdateItem}>
+        <View style={styles.buddyAvatar}>
+          <Text style={styles.buddyAvatarText}>{item.name[0]}</Text>
         </View>
         <View style={styles.buddyUpdateContent}>
           <Text style={styles.buddyUpdateText}>
-            {isNudgeAlert ? (
-              <Text style={styles.nudgeText}>{item.prayer}</Text>
-            ) : (
-              <><Text style={styles.buddyName}>{item.name}</Text> completed {item.prayer}</>
-            )}
+            <Text style={styles.buddyName}>{item.name}</Text> completed {item.prayer}
           </Text>
           <Text style={styles.buddyUpdateTime}>{item.time}</Text>
         </View>
@@ -927,5 +998,10 @@ const styles = StyleSheet.create({
   nudgeText: {
     fontWeight: '600',
     color: '#92400E',
+  },
+  dismissButton: {
+    padding: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(146, 64, 14, 0.1)',
   },
 });
