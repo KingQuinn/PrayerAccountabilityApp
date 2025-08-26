@@ -2,6 +2,7 @@ import { useEffect, useState, createContext, useContext } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import NotificationsBootstrap from '@/notifications/bootstrap';
+import { pushNotificationService } from '@/notifications/pushService';
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
 
@@ -37,6 +38,13 @@ export default function RootLayout() {
       router.replace('/');
     }
   }, [session, segments, router]);
+
+  // Initialize push notifications when user is authenticated
+  useEffect(() => {
+    if (session?.user?.id) {
+      pushNotificationService.initialize(session.user.id);
+    }
+  }, [session?.user?.id]);
 
   return (
     <SessionCtx.Provider value={session}>

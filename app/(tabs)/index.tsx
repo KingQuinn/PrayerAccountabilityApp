@@ -4,15 +4,21 @@ import {
   ScrollView,
   View,
   Text,
-  Button,
+  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Switch,
   Alert,
   AppState,
+  FlatList,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+dayjs.extend(relativeTime);
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Coordinates,
@@ -23,7 +29,7 @@ import {
   CalculationParameters,
 } from 'adhan';
 import * as Notifications from 'expo-notifications';
-import { scheduleNextPrayerNotification } from '../../notifications/adhanScheduler';
+import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS } from '../../notifications/adhanScheduler';
 import { supabase } from '../../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -37,6 +43,27 @@ type Checklist = {
   isha: boolean;
 };
 const PRAYERS: (keyof Checklist)[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+
+interface PrayerProgress {
+  name: string;
+  completed: boolean;
+  time: string;
+}
+
+interface BuddyUpdate {
+  name: string;
+  prayer: string;
+  time: string;
+}
+
+interface BuddyUpdateData {
+  user_id: string;
+  prayer: string;
+  updated_at: string;
+  profile?: {
+    email: string | null;
+  };
+}
 
 const CONGRATS_LINES = [
   'Beautiful consistency! Keep it up.',
@@ -52,6 +79,7 @@ const CONGRATS_LINES = [
 ];
 
 export default function Home() {
+  const router = useRouter();
   const [session, setSession] = useState<SessionT>(null);
   const uid = session?.user?.id || null;
 
@@ -80,6 +108,7 @@ export default function Home() {
   const dayTimer = useRef<any>(null);
   const gpsTimer = useRef<any>(null);
   const [bus, setBus] = useState<RealtimeChannel | null>(null);
+  const [buddyUpdates, setBuddyUpdates] = useState<BuddyUpdateData[]>([]);
 
   // Debounce/lock for scheduling to avoid loops
   const rescheduleLock = useRef(false);
@@ -121,6 +150,7 @@ export default function Home() {
       await getAndComputeWithCurrentLocation(); // will reschedule after compute
       await loadChecklistForDay(today, uid);
       await loadUnseenNudgesCount(today, uid);
+      await loadBuddyUpdates(uid);
     };
     setup();
 
@@ -156,6 +186,20 @@ export default function Home() {
         { event: '*', schema: 'public', table: 'nudges', filter: `to_user=eq.${uid}` },
         () => {
           loadUnseenNudgesCount(dayjs().format('YYYY-MM-DD'), uid);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'prayer_checkins' },
+        () => {
+          loadBuddyUpdates(uid);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'buddy_links' },
+        () => {
+          loadBuddyUpdates(uid);
         }
       )
       .subscribe();
@@ -214,6 +258,55 @@ export default function Home() {
       .eq('day', dayStr)
       .is('seen_at', null);
     if (!error) setNudgedCount((rows || []).length);
+  };
+
+  const loadBuddyUpdates = async (userId: string) => {
+    // Get accepted buddy relationships
+    const { data: links } = await supabase
+      .from('buddy_links')
+      .select('user_a,user_b')
+      .eq('status', 'accepted')
+      .or(`user_a.eq.${userId},user_b.eq.${userId}`);
+    
+    if (!links || links.length === 0) {
+      setBuddyUpdates([]);
+      return;
+    }
+    
+    // Get buddy IDs
+    const buddyIds = links.map(link => 
+      link.user_a === userId ? link.user_b : link.user_a
+    );
+    
+    // Get recent prayer completions from buddies (last 24 hours)
+    const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+    const today = dayjs().format('YYYY-MM-DD');
+    
+    const { data: updates } = await supabase
+      .from('prayer_checkins')
+      .select(`
+        user_id,
+        prayer,
+        updated_at,
+        profiles!inner(email)
+      `)
+      .in('user_id', buddyIds)
+      .eq('completed', true)
+      .in('day', [yesterday, today])
+      .order('updated_at', { ascending: false })
+      .limit(10);
+    
+    if (updates) {
+      const formattedUpdates = updates.map((update: any) => ({
+        user_id: update.user_id,
+        prayer: update.prayer,
+        updated_at: update.updated_at,
+        profile: {
+          email: update.profiles?.email || null
+        }
+      }));
+      setBuddyUpdates(formattedUpdates);
+    }
   };
 
   const getAndComputeWithCurrentLocation = async () => {
@@ -378,61 +471,189 @@ export default function Home() {
     await saveCheckin(key, v);
   };
 
+  // Helper functions for new UI
+  const getPrayerProgress = (): PrayerProgress[] => {
+    if (!coords) {
+      // Fallback to mock data when no location
+      return [
+        { name: 'Fajr', completed: checklist.fajr, time: '5:30 AM' },
+        { name: 'Dhuhr', completed: checklist.dhuhr, time: '12:15 PM' },
+        { name: 'Asr', completed: checklist.asr, time: '3:45 PM' },
+        { name: 'Maghrib', completed: checklist.maghrib, time: '6:20 PM' },
+        { name: 'Isha', completed: checklist.isha, time: '7:45 PM' },
+      ];
+    }
+
+    // Use real prayer times from adhanScheduler
+    const prayerTimes = computeTodayPrayerDates(
+      { latitude: coords.latitude, longitude: coords.longitude },
+      FIXED_MWL_PREFS
+    );
+
+    return [
+      { name: 'Fajr', completed: checklist.fajr, time: formatTime(prayerTimes.fajr) },
+      { name: 'Dhuhr', completed: checklist.dhuhr, time: formatTime(prayerTimes.dhuhr) },
+      { name: 'Asr', completed: checklist.asr, time: formatTime(prayerTimes.asr) },
+      { name: 'Maghrib', completed: checklist.maghrib, time: formatTime(prayerTimes.maghrib) },
+      { name: 'Isha', completed: checklist.isha, time: formatTime(prayerTimes.isha) },
+    ];
+  };
+
+  const getBuddyUpdates = (): BuddyUpdate[] => {
+    const updates: BuddyUpdate[] = [];
+    
+    // Add nudge notification at the top if there are unseen nudges
+    if (nudgedCount > 0) {
+      updates.push({
+        name: 'Nudge Alert',
+        prayer: `You were nudged ${nudgedCount} time${nudgedCount > 1 ? 's' : ''} today`,
+        time: 'Today'
+      });
+    }
+    
+    // Add regular buddy updates
+    if (buddyUpdates && buddyUpdates.length > 0) {
+      const regularUpdates = buddyUpdates.map(update => ({
+        name: update.profile?.email?.split('@')[0] || 'Unknown',
+        prayer: update.prayer.charAt(0).toUpperCase() + update.prayer.slice(1),
+        time: dayjs(update.updated_at).fromNow()
+      }));
+      updates.push(...regularUpdates);
+    }
+    
+    return updates;
+  };
+
+  const renderPrayerItem = ({ item }: { item: PrayerProgress }) => (
+    <TouchableOpacity 
+      style={styles.prayerItem}
+      onPress={() => {
+        const prayerKey = item.name.toLowerCase() as keyof Checklist;
+        onToggle(prayerKey)(!item.completed);
+      }}
+    >
+      <View style={styles.prayerLeft}>
+        <View style={[styles.checkCircle, item.completed && styles.checkCircleCompleted]}>
+          {item.completed && (
+            <Ionicons name="checkmark" size={16} color="white" />
+          )}
+        </View>
+        <Text style={styles.prayerName}>{item.name}</Text>
+      </View>
+      <Text style={styles.prayerTime}>{item.time}</Text>
+    </TouchableOpacity>
+  );
+
+  const renderBuddyUpdate = ({ item }: { item: BuddyUpdate }) => {
+    const isNudgeAlert = item.name === 'Nudge Alert';
+    
+    return (
+      <View style={[styles.buddyUpdateItem, isNudgeAlert && styles.nudgeUpdateItem]}>
+        <View style={[styles.buddyAvatar, isNudgeAlert && styles.nudgeAvatar]}>
+          <Text style={styles.buddyAvatarText}>
+            {isNudgeAlert ? '🔔' : item.name[0]}
+          </Text>
+        </View>
+        <View style={styles.buddyUpdateContent}>
+          <Text style={styles.buddyUpdateText}>
+            {isNudgeAlert ? (
+              <Text style={styles.nudgeText}>{item.prayer}</Text>
+            ) : (
+              <><Text style={styles.buddyName}>{item.name}</Text> completed {item.prayer}</>
+            )}
+          </Text>
+          <Text style={styles.buddyUpdateTime}>{item.time}</Text>
+        </View>
+      </View>
+    );
+  };
+  const completedCount = PRAYERS.filter(p => checklist[p]).length;
+  const userEmail = session?.user?.email || 'User';
+  const firstName = userEmail.split('@')[0] || 'A';
+
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.title}>Welcome 👋</Text>
-        <Text style={{ marginBottom: 16 }}>{session?.user?.email}</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>Assalamu Alaikum</Text>
+          <Text style={styles.subGreeting}>Keep up the good work!</Text>
+        </View>
+        <View style={styles.profileAvatar}>
+          <Text style={styles.profileAvatarText}>{firstName[0]?.toUpperCase() || 'A'}</Text>
+        </View>
+      </View>
 
-        {nudgedCount > 0 && (
-          <View style={styles.nudgeStrip}>
-            <Text style={{ color: '#9c2f2f', fontWeight: '600' }}>
-              You were nudged {nudgedCount} time{nudgedCount > 1 ? 's' : ''} today
-            </Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Today's Progress */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Today's Prayers</Text>
+            <Text style={styles.progressText}>{completedCount}/5</Text>
           </View>
-        )}
+          
+          <FlatList 
+            data={getPrayerProgress()}
+            renderItem={renderPrayerItem}
+            keyExtractor={(item) => item.name}
+            scrollEnabled={false}
+          />
+        </View>
 
-        <Text style={styles.subtitle}>Today’s prayer times</Text>
-        {loadingTimes && <ActivityIndicator size="small" />}
-        {locError && <Text style={{ color: '#b00', marginTop: 8 }}>{locError}</Text>}
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => router.push('/prayers')}
+          >
+            <Ionicons name="time-outline" size={32} color="#4F46E5" />
+            <Text style={styles.actionButtonText}>Prayer Times</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => router.push('/buddy')}
+          >
+            <Ionicons name="people-outline" size={32} color="#4F46E5" />
+            <Text style={styles.actionButtonText}>My Buddies</Text>
+          </TouchableOpacity>
+        </View>
 
-        <View style={styles.timesBox}>
-          {times ? (
-            <>
-              <Row label="Fajr" value={times.fajr} />
-              <Row label="Dhuhr" value={times.dhuhr} />
-              <Row label="Asr" value={times.asr} />
-              <Row label="Maghrib" value={times.maghrib} />
-              <Row label="Isha" value={times.isha} />
-            </>
+        {/* Recent Activity */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Buddy Updates</Text>
+          {getBuddyUpdates().length > 0 ? (
+            <FlatList 
+              data={getBuddyUpdates()}
+              renderItem={renderBuddyUpdate}
+              keyExtractor={(item, index) => `${item.name}-${index}`}
+              scrollEnabled={false}
+            />
           ) : (
-            <View style={{ paddingVertical: 8 }}>
-              <Text style={{ opacity: 0.7 }}>Waiting for current location…</Text>
-              <View style={{ height: 8 }} />
-              <Button title="Try again" onPress={getAndComputeWithCurrentLocation} />
-            </View>
+            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 16 }}>
+              No recent updates from your buddies
+            </Text>
           )}
         </View>
 
-        <View style={{ marginTop: 16 }}>
-          {PRAYERS.map((p) => (
-            <CheckRow key={p} label={capitalize(p)} value={checklist[p]} onChange={onToggle(p)} />
-          ))}
-        </View>
+        {/* Loading and Error States */}
+        {loadingTimes && (
+          <View style={styles.card}>
+            <ActivityIndicator size="small" />
+            <Text style={{ textAlign: 'center', marginTop: 8 }}>Loading prayer times...</Text>
+          </View>
+        )}
+        
+        {locError && (
+          <View style={styles.card}>
+            <Text style={{ color: '#b00', textAlign: 'center' }}>{locError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={getAndComputeWithCurrentLocation}>
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        <View
-          style={{
-            marginTop: 8,
-            minHeight: 22,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
+        {/* Save Status */}
+        <View style={{ marginTop: 8, minHeight: 22, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {saving && <ActivityIndicator size="small" />}
           {!!saveMsg && <Text style={{ color: '#0a0' }}>{saveMsg}</Text>}
         </View>
@@ -478,24 +699,233 @@ function capitalize(s: string) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 24, paddingBottom: 160 },
-  title: { fontSize: 24, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 18, fontWeight: '600' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  screen: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  timesBox: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+  },
   rowBetween: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: 8,
   },
-  rowLabel: { fontSize: 16 },
-  rowValue: { fontSize: 16, fontWeight: '600' },
-  timesBox: { backgroundColor: '#f7f7f7', borderRadius: 10, padding: 12, marginTop: 8 },
+  rowLabel: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  rowValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#4F46E5',
+  },
+  header: {
+    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  greeting: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  subGreeting: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  profileAvatar: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#4F46E5',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileAvatarText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  progressText: {
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  prayerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  prayerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#D1D5DB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  checkCircleCompleted: {
+    backgroundColor: '#10B981',
+  },
+  prayerName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  prayerTime: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 20,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  buddyUpdateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  buddyAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#10B981',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  buddyAvatarText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  buddyUpdateContent: {
+    flex: 1,
+  },
+  buddyUpdateText: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  buddyName: {
+    fontWeight: '600',
+  },
+  buddyUpdateTime: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  retryButton: {
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
   nudgeStrip: {
     backgroundColor: '#fde7e7',
     padding: 10,
     borderRadius: 8,
     marginBottom: 8,
     alignItems: 'center',
+  },
+  nudgeUpdateItem: {
+    backgroundColor: '#FEF3C7',
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  nudgeAvatar: {
+    backgroundColor: '#F59E0B',
+  },
+  nudgeText: {
+    fontWeight: '600',
+    color: '#92400E',
   },
 });

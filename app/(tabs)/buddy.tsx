@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import dayjs from 'dayjs';
 import { supabase } from '../../lib/supabase';
 import { scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
+import { pushNotificationService } from '../../notifications/pushService';
 
 
 type SessionT = { user: { id: string; email?: string | null } | null } | null;
@@ -209,6 +210,16 @@ export default function Buddy() {
     if (error) {
       Alert.alert('Nudge failed', error.message);
     } else {
+      // Send push notification to buddy
+      const fromUserEmail = session?.user?.email || 'Your buddy';
+      await pushNotificationService.sendNudgeNotification(
+        toUser,
+        fromUserEmail,
+        prayer
+      );
+      
+      Alert.alert('Nudge sent!', `${profiles[toUser]?.email || 'Your buddy'} has been nudged about ${prayer} prayer.`);
+      
       // Optional refresh
       await loadOutgoingNudges();
     }
