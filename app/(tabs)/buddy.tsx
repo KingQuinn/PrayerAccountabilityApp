@@ -21,7 +21,7 @@ type BuddyLink = {
   receiver_seen_at: string | null;
 };
 
-type ProfileLite = { id: string; email: string | null };
+type ProfileLite = { id: string; email: string | null; username: string | null };
 type PrayerKey = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
 const PRAYERS: PrayerKey[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
@@ -156,10 +156,16 @@ export default function Buddy() {
 
   const loadLinks = async () => {
     if (!me) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('buddy_links')
       .select('*')
       .or(`user_a.eq.${me},user_b.eq.${me}`);
+    
+    if (error) {
+      console.warn('Error loading buddy links:', error.message);
+      return;
+    }
+    
     setLinks((data || []) as BuddyLink[]);
 
     const ids = new Set<string>();
@@ -168,12 +174,18 @@ export default function Buddy() {
       ids.add(bl.user_b);
     });
     if (ids.size) {
-      const { data: profs } = await supabase
+      const { data: profs, error: profilesError } = await supabase
         .from('profiles')
-        .select('id,email')
+        .select('id,email,username')
         .in('id', Array.from(ids));
+      
+      if (profilesError) {
+        console.warn('Error loading profiles:', profilesError.message);
+        return;
+      }
+      
       const map: Record<string, ProfileLite> = {};
-      (profs || []).forEach((p) => (map[p.id] = { id: p.id, email: p.email ?? null }));
+      (profs || []).forEach((p) => (map[p.id] = { id: p.id, email: p.email ?? null, username: p.username ?? null }));
       setProfiles(map);
     }
   };
@@ -189,14 +201,18 @@ export default function Buddy() {
     if (!ids.length) return setFeed({});
     const { data, error } = await supabase
       .from('prayer_checkins')
-      .select('user_id,prayer,completed')
+      .select('user_id,prayer,prayer_name,completed')
       .eq('day', today)
       .in('user_id', ids);
-    if (error) return;
+    if (error) {
+      console.warn('Error loading prayer feed:', error.message);
+      return;
+    }
     const map: Record<string, Partial<Record<PrayerKey, boolean>>> = {};
     (data || []).forEach((row: any) => {
       const u = row.user_id as string;
-      const p = row.prayer as PrayerKey;
+      // Handle both new 'prayer' column and legacy 'prayer_name' column
+      const p = (row.prayer || row.prayer_name) as PrayerKey;
       if (!map[u]) map[u] = {};
       map[u][p] = !!row.completed;
     });
@@ -408,7 +424,16 @@ export default function Buddy() {
     const profile = profiles[other];
     const todayMap = feed[other] || {};
     const completedPrayers = Object.values(todayMap).filter(Boolean).length;
-    const name = profile?.email?.split('@')[0] || 'Unknown';
+    // Better name extraction with multiple fallbacks - prioritize username
+    let name = 'Loading...';
+    if (profile?.username) {
+      name = profile.username;
+    } else if (profile?.email) {
+      name = profile.email.split('@')[0];
+    } else if (other) {
+      // Use first 8 characters of user ID as fallback
+      name = `User ${other.substring(0, 8)}`;
+    }
     const userStreakData = streakData[other];
     
     return {
@@ -416,10 +441,10 @@ export default function Buddy() {
       name: name.charAt(0).toUpperCase() + name.slice(1),
       email: profile?.email || other,
       avatar: name.charAt(0).toUpperCase(),
-      streak: userStreakData?.currentStreak || 0,
+      streak: userStreakData?.currentStreak ?? 0, // Use nullish coalescing for better handling
       todayPrayers: `${completedPrayers}/5`,
       status: streakService.isUserOnline(userStreakData?.lastActive) ? 'online' : 'offline',
-      lastActive: streakService.formatLastActive(userStreakData?.lastActive),
+      lastActive: userStreakData?.lastActive ? streakService.formatLastActive(userStreakData.lastActive) : 'Never',
       link: bl,
       todayMap
     };
@@ -435,7 +460,16 @@ export default function Buddy() {
   const requestsData = pendingIncoming.map((bl) => {
     const other = me === bl.user_a ? bl.user_b : bl.user_a;
     const profile = profiles[other];
-    const name = profile?.email?.split('@')[0] || 'Unknown';
+    // Better name extraction with multiple fallbacks - prioritize username
+    let name = 'Loading...';
+    if (profile?.username) {
+      name = profile.username;
+    } else if (profile?.email) {
+      name = profile.email.split('@')[0];
+    } else if (other) {
+      // Use first 8 characters of user ID as fallback
+      name = `User ${other.substring(0, 8)}`;
+    }
     
     return {
       id: bl.id,

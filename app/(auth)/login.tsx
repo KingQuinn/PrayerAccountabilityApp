@@ -6,7 +6,10 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   SafeAreaView, 
-  Alert, 
+  Alert,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,37 +29,99 @@ export default function Login() {
   }, [session]);
 
   const upsertProfile = async (userId: string, emailVal: string | null) => {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({ id: userId, tz, email: emailVal }, { onConflict: 'id' });
-    if (error) console.warn('Profile upsert error', error.message);
-    
-    // Initialize streak tracking for new or existing users without last_active_at
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('last_active_at')
-      .eq('id', userId)
-      .single();
-    
-    if (!profile?.last_active_at) {
-      await streakService.initializeUserStreak(userId);
+    try {
+      console.log('Creating/updating profile for user:', userId);
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ id: userId, tz, email: emailVal }, { onConflict: 'id' });
+      
+      if (error) {
+        console.error('Profile upsert error:', error);
+        throw new Error(`Profile creation failed: ${error.message}`);
+      }
+      
+      console.log('Profile upserted successfully');
+      
+      // Initialize streak tracking for new or existing users without last_active_at
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('last_active_at')
+        .eq('id', userId)
+        .single();
+      
+      if (profileError) {
+        console.error('Error fetching profile for streak init:', profileError);
+        // Don't throw here, profile was created successfully
+        return;
+      }
+      
+      if (!profile?.last_active_at) {
+        console.log('Initializing streak tracking for new user');
+        await streakService.initializeUserStreak(userId);
+        console.log('Streak tracking initialized');
+      }
+    } catch (error) {
+      console.error('Profile upsert process failed:', error);
+      throw error;
     }
   };
 
   const signUp = async () => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return Alert.alert('Sign up failed', error.message);
-    if (data.user) {
-      await upsertProfile(data.user.id, data.user.email ?? email);
-      Alert.alert('Check your email', 'Verify your email to finish sign up (if enabled).');
+    try {
+      console.log('Starting signup process for:', email);
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      
+      if (error) {
+        console.error('Signup error:', error);
+        return Alert.alert('Sign up failed', `${error.message}\n\nError code: ${error.status || 'Unknown'}`);
+      }
+      
+      if (data.user) {
+        console.log('User created successfully:', data.user.id);
+        try {
+          await upsertProfile(data.user.id, data.user.email ?? email);
+          console.log('Profile created successfully');
+          Alert.alert('Account created!', 'Your account has been created successfully. You can now sign in.');
+        } catch (profileError) {
+          console.error('Profile creation error:', profileError);
+          Alert.alert('Profile creation failed', 'Account was created but profile setup failed. Please try signing in.');
+        }
+      } else {
+        console.warn('No user data returned from signup');
+        Alert.alert('Signup incomplete', 'Account creation did not complete properly. Please try again.');
+      }
+    } catch (unexpectedError) {
+      console.error('Unexpected signup error:', unexpectedError);
+      Alert.alert('Signup failed', 'An unexpected error occurred. Please try again.');
     }
   };
 
   const signIn = async () => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return Alert.alert('Sign in failed', error.message);
-    if (data.user) await upsertProfile(data.user.id, data.user.email ?? email);
+    try {
+      console.log('Starting signin process for:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        console.error('Signin error:', error);
+        return Alert.alert('Sign in failed', `${error.message}\n\nError code: ${error.status || 'Unknown'}`);
+      }
+      
+      if (data.user) {
+        console.log('User signed in successfully:', data.user.id);
+        try {
+          await upsertProfile(data.user.id, data.user.email ?? email);
+          console.log('Profile updated successfully');
+        } catch (profileError) {
+          console.error('Profile update error:', profileError);
+          // Don't block signin for profile update errors
+        }
+      }
+    } catch (unexpectedError) {
+      console.error('Unexpected signin error:', unexpectedError);
+      Alert.alert('Sign in failed', 'An unexpected error occurred. Please try again.');
+    }
   };
 
   const handleSubmit = () => {
@@ -73,11 +138,20 @@ export default function Login() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={['#ddd6fe', '#c7d2fe']}
-        style={styles.gradient}
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.content}>
+        <LinearGradient
+          colors={['#ddd6fe', '#c7d2fe']}
+          style={styles.gradient}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>PrayerPal</Text>
           </View>
@@ -134,8 +208,10 @@ export default function Login() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </LinearGradient>
+            </View>
+          </ScrollView>
+        </LinearGradient>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -146,8 +222,12 @@ const styles = StyleSheet.create({
   },
   gradient: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: 20,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    minHeight: '100%',
   },
   content: {
     backgroundColor: 'white',

@@ -40,15 +40,17 @@
         "POST_NOTIFICATIONS",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "POST_NOTIFICATIONS",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.anonymous.PrayerAccountabilityApp"
     },
     "extra": {
       "eas": {
-      }
-    }
+        "projectId": "39aa4603-e266-424a-965e-fbd897f2aa24"
+      },
+      "router": {}
+    },
+    "owner": "kingquinn"
   }
 }

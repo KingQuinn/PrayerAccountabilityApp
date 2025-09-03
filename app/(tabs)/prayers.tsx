@@ -307,17 +307,7 @@ const { data: prof } = await supabase
           />
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="alarm-outline" size={24} color="#4F46E5" />
-            <Text style={styles.actionButtonText}>Set Reminder</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="calendar-outline" size={24} color="#4F46E5" />
-            <Text style={styles.actionButtonText}>View Calendar</Text>
-          </TouchableOpacity>
-        </View>
+
         
 
       </ScrollView>
@@ -491,28 +481,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F3F4F6',
   },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 20,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#111827',
-    marginTop: 8,
-  },
+
 
 });

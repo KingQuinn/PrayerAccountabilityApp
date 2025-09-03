@@ -29,7 +29,7 @@ import {
   CalculationParameters,
 } from 'adhan';
 import * as Notifications from 'expo-notifications';
-import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS } from '../../notifications/adhanScheduler';
+import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS, scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
 import { supabase } from '../../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { streakService } from '../../services/streakService';
@@ -63,6 +63,7 @@ interface BuddyUpdateData {
   updated_at: string;
   profile?: {
     email: string | null;
+    username: string | null;
   };
 }
 
@@ -326,7 +327,7 @@ export default function Home() {
         user_id,
         prayer,
         updated_at,
-        profiles!inner(email)
+        profiles!inner(email,username)
       `)
       .in('user_id', buddyIds)
       .eq('completed', true)
@@ -340,7 +341,8 @@ export default function Home() {
         prayer: update.prayer,
         updated_at: update.updated_at,
         profile: {
-          email: update.profiles?.email || null
+          email: update.profiles?.email || null,
+          username: update.profiles?.username || null
         }
       }));
       setBuddyUpdates(formattedUpdates);
@@ -565,11 +567,21 @@ export default function Home() {
     
     // Add regular buddy updates
     if (buddyUpdates && buddyUpdates.length > 0) {
-      const regularUpdates = buddyUpdates.map(update => ({
-        name: update.profile?.email?.split('@')[0] || 'Unknown',
-        prayer: update.prayer.charAt(0).toUpperCase() + update.prayer.slice(1),
-        time: dayjs(update.updated_at).fromNow()
-      }));
+      const regularUpdates = buddyUpdates.map(update => {
+        // Prioritize username over email for display name
+        let name = 'Unknown';
+        if (update.profile?.username) {
+          name = update.profile.username;
+        } else if (update.profile?.email) {
+          name = update.profile.email.split('@')[0];
+        }
+        
+        return {
+          name,
+          prayer: update.prayer.charAt(0).toUpperCase() + update.prayer.slice(1),
+          time: dayjs(update.updated_at).fromNow()
+        };
+      });
       updates.push(...regularUpdates);
     }
     
@@ -688,6 +700,23 @@ export default function Home() {
             <Text style={styles.actionButtonText}>My Buddies</Text>
           </TouchableOpacity>
         </View>
+        
+        {/* Test Audio Button */}
+        <TouchableOpacity 
+          style={[styles.actionButton, { marginBottom: 20, backgroundColor: '#10B981' }]}
+          onPress={async () => {
+            try {
+              await scheduleTestAudioNotification();
+              Alert.alert('Test Scheduled', 'Audio notification will play in 10 seconds');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to schedule test notification');
+              console.error('Test notification error:', error);
+            }
+          }}
+        >
+          <Ionicons name="volume-high-outline" size={32} color="white" />
+          <Text style={[styles.actionButtonText, { color: 'white' }]}>Test Audio Notification</Text>
+        </TouchableOpacity>
 
         {/* Recent Activity */}
         <View style={styles.card}>

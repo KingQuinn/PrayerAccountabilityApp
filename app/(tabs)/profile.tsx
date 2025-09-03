@@ -62,6 +62,7 @@ export default function Profile() {
   const [session, setSession] = useState<SessionT>(null);
   const [loading, setLoading] = useState(true);
   const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0, totalPrayers: 0 });
+  const [prayerBuddiesCount, setPrayerBuddiesCount] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -69,6 +70,7 @@ export default function Profile() {
   const [madhab, setMadhab] = useState<MadhabKey>('Shafi');
   const [highLat, setHighLat] = useState<HighLatKey>('MiddleOfTheNight');
   const [graceMinutes, setGraceMinutes] = useState<string>('30');
+  const [username, setUsername] = useState<string>('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -81,7 +83,7 @@ export default function Profile() {
       if (!session?.user?.id) { setLoading(false); return; }
       const { data, error } = await supabase
         .from('profiles')
-        .select('calc_method, madhab, high_lat_rule, grace_minutes, tz, current_streak, longest_streak')
+        .select('calc_method, madhab, high_lat_rule, grace_minutes, tz, current_streak, longest_streak, username')
         .eq('id', session.user.id)
         .single();
 
@@ -90,12 +92,13 @@ export default function Profile() {
         if (data.madhab) setMadhab(data.madhab as MadhabKey);
         if (data.high_lat_rule) setHighLat(data.high_lat_rule as HighLatKey);
         if (data.grace_minutes != null) setGraceMinutes(String(data.grace_minutes));
+        if (data.username) setUsername(data.username);
         
         // Load streak data
         setStreakData({
           currentStreak: data.current_streak || 0,
           longestStreak: data.longest_streak || 0,
-          totalPrayers: 0 // Will be calculated from prayer_completions
+          totalPrayers: 0 // Will be calculated from prayer_checkins
         });
       } else {
         // Ensure row exists with timezone
@@ -103,17 +106,27 @@ export default function Profile() {
         await supabase.from('profiles').upsert({ id: session?.user?.id, tz }, { onConflict: 'id' });
       }
       
-      // Load total prayers count
+      // Load total prayers count (individual prayers completed)
       if (session?.user?.id) {
         const { data: prayerData } = await supabase
-          .from('prayer_completions')
+          .from('prayer_checkins')
           .select('id')
-          .eq('user_id', session.user.id);
+          .eq('user_id', session.user.id)
+          .eq('completed', true);
         
         setStreakData(prev => ({
           ...prev,
           totalPrayers: prayerData?.length || 0
         }));
+        
+        // Load prayer buddies count
+        const { data: buddyData } = await supabase
+          .from('buddy_links')
+          .select('id')
+          .or(`user_a.eq.${session.user.id},user_b.eq.${session.user.id}`)
+          .eq('status', 'accepted');
+        
+        setPrayerBuddiesCount(buddyData?.length || 0);
       }
       
       setLoading(false);
@@ -132,13 +145,20 @@ export default function Profile() {
     if (Number.isNaN(g) || g < 0 || g > 180) {
       return Alert.alert('Invalid grace minutes', 'Enter a number between 0 and 180.');
     }
+    
+    // Validate username if provided
+    if (username && (username.length < 3 || username.length > 30 || !/^[a-zA-Z0-9_]+$/.test(username))) {
+      return Alert.alert('Invalid username', 'Username must be 3-30 characters and contain only letters, numbers, and underscores.');
+    }
+    
     const { error } = await supabase
       .from('profiles')
       .update({
         calc_method: calcMethod,
         madhab,
         high_lat_rule: highLat,
-        grace_minutes: g
+        grace_minutes: g,
+        username: username || null
       })
       .eq('id', session.user.id);
     if (error) Alert.alert('Save failed', error.message);
@@ -152,7 +172,7 @@ export default function Profile() {
   const stats: Stat[] = [
     { label: 'Prayer Streak', value: `${streakData.currentStreak} days`, icon: 'trophy-outline', color: '#F59E0B' },
     { label: 'Total Prayers', value: `${streakData.totalPrayers}`, icon: 'calendar-outline', color: '#4F46E5' },
-    { label: 'Longest Streak', value: `${streakData.longestStreak} days`, icon: 'flame-outline', color: '#EF4444' },
+    { label: 'Prayer Buddies', value: `${prayerBuddiesCount}`, icon: 'people-outline', color: '#10B981' },
   ];
 
   const menuItems: MenuItem[] = [
@@ -204,7 +224,8 @@ export default function Profile() {
   );
 
   const userEmail = session?.user?.email || 'User';
-  const firstName = userEmail.split('@')[0] || 'A';
+  const displayName = username || userEmail.split('@')[0] || 'A';
+  const avatarLetter = displayName[0]?.toUpperCase() || 'A';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -216,9 +237,9 @@ export default function Profile() {
         >
           <View style={styles.profileContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{firstName[0]?.toUpperCase() || 'A'}</Text>
+              <Text style={styles.avatarText}>{avatarLetter}</Text>
             </View>
-            <Text style={styles.name}>{firstName}</Text>
+            <Text style={styles.name}>{displayName}</Text>
             <Text style={styles.email}>{userEmail}</Text>
             <TouchableOpacity style={styles.editButton} onPress={() => setShowSettings(!showSettings)}>
               <Text style={styles.editButtonText}>Prayer Settings</Text>
@@ -245,7 +266,17 @@ export default function Profile() {
               {/* Prayer Settings (Collapsible) */}
               {showSettings && (
                 <View style={styles.settingsCard}>
-                  <Text style={styles.settingsTitle}>Prayer Settings</Text>
+                  <Text style={styles.settingsTitle}>Profile & Prayer Settings</Text>
+                  
+                  <Text style={styles.label}>Username (optional)</Text>
+                  <TextInput
+                    value={username}
+                    onChangeText={setUsername}
+                    style={styles.input}
+                    placeholder="Enter a custom username"
+                    maxLength={30}
+                  />
+                  <Text style={[styles.label, { fontSize: 12, opacity: 0.6, marginTop: 4 }]}>3-30 characters, letters, numbers, and underscores only</Text>
                   
                   <Text style={styles.label}>Calculation Method</Text>
                   <RowSelector
@@ -287,7 +318,7 @@ export default function Profile() {
 
                   <View style={{ height: 16 }} />
                   <TouchableOpacity style={styles.saveButton} onPress={save}>
-                    <Text style={styles.saveButtonText}>Save Preferences</Text>
+                    <Text style={styles.saveButtonText}>Save Settings</Text>
                   </TouchableOpacity>
                 </View>
               )}
