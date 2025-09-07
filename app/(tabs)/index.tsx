@@ -29,7 +29,7 @@ import {
   CalculationParameters,
 } from 'adhan';
 import * as Notifications from 'expo-notifications';
-import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS, scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
+import { scheduleNextPrayerNotification, computeTodayPrayerDates, FIXED_MWL_PREFS } from '../../notifications/adhanScheduler';
 import { supabase } from '../../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { streakService } from '../../services/streakService';
@@ -701,22 +701,7 @@ export default function Home() {
           </TouchableOpacity>
         </View>
         
-        {/* Test Audio Button */}
-        <TouchableOpacity 
-          style={[styles.actionButton, { marginBottom: 20, backgroundColor: '#10B981' }]}
-          onPress={async () => {
-            try {
-              await scheduleTestAudioNotification();
-              Alert.alert('Test Scheduled', 'Audio notification will play in 10 seconds');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to schedule test notification');
-              console.error('Test notification error:', error);
-            }
-          }}
-        >
-          <Ionicons name="volume-high-outline" size={32} color="white" />
-          <Text style={[styles.actionButtonText, { color: 'white' }]}>Test Audio Notification</Text>
-        </TouchableOpacity>
+
 
         {/* Recent Activity */}
         <View style={styles.card}>

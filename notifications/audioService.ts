@@ -98,16 +98,7 @@ class AudioNotificationService {
     }
   }
 
-  async scheduleTestNotification() {
-    const triggerDate = new Date(Date.now() + 10000); // 10 seconds from now
-    
-    await this.scheduleHybridNotification({
-      title: '🕌 Test Prayer Notification',
-      body: 'Testing hybrid audio notification system',
-      triggerDate,
-      data: { type: 'test', prayer: 'test' },
-    });
-  }
+
 }
 
 // Export singleton instance

@@ -182,12 +182,3 @@ export async function scheduleNextPrayerNotification(
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-
-// Test function to schedule a notification in 10 seconds using hybrid system
-export async function scheduleTestAudioNotification() {
-  const { audioNotificationService } = await import('./audioService');
-  await audioNotificationService.scheduleTestNotification();
-  
-  console.log('Hybrid test audio notification scheduled for 10 seconds from now');
-  console.log('Current time:', new Date());
-}

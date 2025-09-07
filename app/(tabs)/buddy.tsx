@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState, ViewStyle, FlatList, TouchableOpacity } from 'react-native';
+import { useEffect, useMemo, useState, useCallback, memo } from 'react';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, TextInput, Button, Alert, ActivityIndicator, Pressable, AppState, ViewStyle, FlatList, TouchableOpacity, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { supabase } from '../../lib/supabase';
-import { scheduleTestAudioNotification } from '../../notifications/adhanScheduler';
+
 import { pushNotificationService } from '../../notifications/pushService';
 import { streakService } from '../../services/streakService';
 
@@ -40,6 +40,91 @@ interface BuddyData {
   todayMap: Record<string, boolean>;
 }
 
+interface AddBuddyModalProps {
+  visible: boolean;
+  inviteEmail: string;
+  inviting: boolean;
+  onClose: () => void;
+  onEmailChange: (email: string) => void;
+  onSendInvite: () => void;
+}
+
+// Memoized AddBuddyModal component to prevent re-renders
+const AddBuddyModal = memo(({ visible, inviteEmail, inviting, onClose, onEmailChange, onSendInvite }: AddBuddyModalProps) => (
+  <Modal
+    visible={visible}
+    animationType="slide"
+    presentationStyle="pageSheet"
+    onRequestClose={onClose}
+  >
+    <SafeAreaView style={styles.modalContainer}>
+      <View style={styles.modalHeader}>
+        <TouchableOpacity onPress={onClose}>
+          <Text style={styles.modalCancelText}>Cancel</Text>
+        </TouchableOpacity>
+        <Text style={styles.modalTitle}>Add Prayer Buddy</Text>
+        <View style={{ width: 60 }} />
+      </View>
+      
+      <View style={styles.modalContent}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalSectionTitle}>Invite by Email</Text>
+          <Text style={styles.modalDescription}>
+            Enter your friend's email address to send them a prayer buddy invitation.
+          </Text>
+          
+          <TextInput
+            style={styles.modalInput}
+            placeholder="Enter email address"
+            placeholderTextColor="#9CA3AF"
+            value={inviteEmail}
+            onChangeText={onEmailChange}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          
+          <TouchableOpacity 
+            style={[styles.modalSendButton, (!inviteEmail.trim() || inviting) && styles.modalSendButtonDisabled]}
+            onPress={onSendInvite}
+            disabled={!inviteEmail.trim() || inviting}
+          >
+            {inviting ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.modalSendButtonText}>Send Invitation</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.modalCard}>
+          <Text style={styles.modalSectionTitle}>How it works</Text>
+          <View style={styles.modalStepContainer}>
+            <View style={styles.modalStep}>
+              <View style={styles.modalStepNumber}>
+                <Text style={styles.modalStepNumberText}>1</Text>
+              </View>
+              <Text style={styles.modalStepText}>Enter your friend's email address</Text>
+            </View>
+            <View style={styles.modalStep}>
+              <View style={styles.modalStepNumber}>
+                <Text style={styles.modalStepNumberText}>2</Text>
+              </View>
+              <Text style={styles.modalStepText}>They'll receive an invitation to be your prayer buddy</Text>
+            </View>
+            <View style={styles.modalStep}>
+              <View style={styles.modalStepNumber}>
+                <Text style={styles.modalStepNumberText}>3</Text>
+              </View>
+              <Text style={styles.modalStepText}>Once they accept, you can encourage each other in prayer</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  </Modal>
+));
+
 export default function Buddy() {
   const [session, setSession] = useState<SessionT>(null);
   const me = session?.user?.id || null;
@@ -64,6 +149,7 @@ export default function Buddy() {
   const [activeTab, setActiveTab] = useState<TabType>('buddies');
   const [searchText, setSearchText] = useState('');
   const [streakData, setStreakData] = useState<Record<string, { currentStreak: number; longestStreak: number; lastActive: string | null }>>({});
+  const [showAddBuddyModal, setShowAddBuddyModal] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
@@ -201,7 +287,7 @@ export default function Buddy() {
     if (!ids.length) return setFeed({});
     const { data, error } = await supabase
       .from('prayer_checkins')
-      .select('user_id,prayer,prayer_name,completed')
+      .select('user_id,prayer,completed')
       .eq('day', today)
       .in('user_id', ids);
     if (error) {
@@ -211,8 +297,7 @@ export default function Buddy() {
     const map: Record<string, Partial<Record<PrayerKey, boolean>>> = {};
     (data || []).forEach((row: any) => {
       const u = row.user_id as string;
-      // Handle both new 'prayer' column and legacy 'prayer_name' column
-      const p = (row.prayer || row.prayer_name) as PrayerKey;
+      const p = row.prayer as PrayerKey;
       if (!map[u]) map[u] = {};
       map[u][p] = !!row.completed;
     });
@@ -316,16 +401,7 @@ export default function Buddy() {
     }
   };
 
-  // Wrapper that enforces a short cooldown per buddy to avoid accidental rapid-fire
-  const testAudioNotification = async () => {
-    try {
-      await scheduleTestAudioNotification();
-      Alert.alert('Test Scheduled', 'Audio notification will play in 10 seconds!');
-    } catch (error) {
-      console.error('Error scheduling test notification:', error);
-      Alert.alert('Error', 'Failed to schedule test notification');
-    }
-  };
+
 
   const onNudgePress = async (userId: string) => {
     const now = Date.now();
@@ -364,6 +440,8 @@ export default function Buddy() {
 
 
 
+
+
   const sendInvite = async () => {
     if (!me) return;
     const email = inviteEmail.trim().toLowerCase();
@@ -371,8 +449,19 @@ export default function Buddy() {
     if (session?.user?.email?.toLowerCase() === email) return Alert.alert('You cannot invite yourself');
     setInviting(true);
     try {
-      const { data: prof, error: pe } = await supabase.from('profiles').select('id,email').eq('email', email).single();
-      if (pe || !prof) return Alert.alert('Not found', 'No user with that email.');
+      const { data: profiles, error: pe } = await supabase.from('profiles').select('id,email').eq('email', email);
+      
+      if (pe) {
+        console.error('Profile search error:', pe);
+        return Alert.alert('Search failed', `Error searching for user: ${pe.message}`);
+      }
+      
+      if (!profiles || profiles.length === 0) {
+        return Alert.alert('User not found', `No user found with email: ${email}\n\nMake sure they have created an account first.`);
+      }
+      
+      const prof = profiles[0];
+      
       const targetId = prof.id as string;
       const [ua, ub] = [me!, targetId].sort() as [string, string];
       const { error: ie } = await supabase.from('buddy_links').insert({
@@ -476,7 +565,6 @@ export default function Buddy() {
       name: name.charAt(0).toUpperCase() + name.slice(1),
       email: profile?.email || other,
       avatar: name.charAt(0).toUpperCase(),
-      mutualFriends: Math.floor(Math.random() * 10), // TODO: Implement real mutual friends
       link: bl
     };
   });
@@ -541,7 +629,6 @@ export default function Buddy() {
         
         <View style={styles.requestInfo}>
           <Text style={styles.requestName}>{item.name}</Text>
-          <Text style={styles.mutualFriends}>{item.mutualFriends} mutual friends</Text>
         </View>
       </View>
 
@@ -556,15 +643,44 @@ export default function Buddy() {
     </View>
   );
 
+  // Memoized handlers to prevent re-renders
+  const handleModalClose = useCallback(() => {
+    setShowAddBuddyModal(false);
+  }, []);
+
+  const handleEmailChange = useCallback((email: string) => {
+    setInviteEmail(email);
+  }, []);
+
+  const handleSendInvite = useCallback(async () => {
+    try {
+      await sendInvite();
+      if (!inviting) {
+        setShowAddBuddyModal(false);
+      }
+    } catch (error) {
+      console.error('Error sending invite:', error);
+    }
+  }, [sendInvite, inviting]);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Prayer Buddies</Text>
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddBuddyModal(true)}>
           <Ionicons name="add" size={24} color="white" />
         </TouchableOpacity>
       </View>
+
+      <AddBuddyModal 
+          visible={showAddBuddyModal}
+          inviteEmail={inviteEmail}
+          inviting={inviting}
+          onClose={handleModalClose}
+          onEmailChange={handleEmailChange}
+          onSendInvite={handleSendInvite}
+        />
 
       <View style={styles.content}>
         {/* Search */}
@@ -935,12 +1051,7 @@ const styles = StyleSheet.create({
   requestName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4
-  },
-  mutualFriends: {
-    fontSize: 14,
-    color: '#6B7280'
+    color: '#1F2937'
   },
   requestActions: {
     flexDirection: 'row',
@@ -1106,5 +1217,122 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     textAlign: 'center'
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#ffffff'
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937'
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: '#6366F1',
+    fontWeight: '500'
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20
+  },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0'
+  },
+  modalSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+    lineHeight: 20
+  },
+  modalInput: {
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: '#f8fafc',
+    marginBottom: 16,
+    fontSize: 16,
+    color: '#1e293b'
+  },
+  modalSendButton: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  modalSendButtonDisabled: {
+    backgroundColor: '#e2e8f0',
+    shadowOpacity: 0
+  },
+  modalSendButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff'
+  },
+  modalStepContainer: {
+    gap: 16
+  },
+  modalStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12
+  },
+  modalStepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalStepNumberText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff'
+  },
+  modalStepText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20
   }
 });

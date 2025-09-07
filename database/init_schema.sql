@@ -101,8 +101,9 @@ CREATE POLICY "Users can delete own prayer completions" ON prayer_completions
 CREATE TABLE IF NOT EXISTS prayer_checkins (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    prayer_name TEXT NOT NULL,
-    checked_in_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    prayer TEXT NOT NULL CHECK (prayer IN ('fajr', 'dhuhr', 'asr', 'maghrib', 'isha')),
+    day DATE NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -173,8 +174,12 @@ CREATE INDEX IF NOT EXISTS idx_prayer_completions_user_day ON prayer_completions
 CREATE INDEX IF NOT EXISTS idx_prayer_completions_day ON prayer_completions(day);
 
 CREATE INDEX IF NOT EXISTS idx_prayer_checkins_user_id ON prayer_checkins(user_id);
-CREATE INDEX IF NOT EXISTS idx_prayer_checkins_prayer_name ON prayer_checkins(prayer_name);
-CREATE INDEX IF NOT EXISTS idx_prayer_checkins_checked_in_at ON prayer_checkins(checked_in_at);
+CREATE INDEX IF NOT EXISTS idx_prayer_checkins_user_day ON prayer_checkins(user_id, day);
+CREATE INDEX IF NOT EXISTS idx_prayer_checkins_prayer ON prayer_checkins(prayer);
+CREATE INDEX IF NOT EXISTS idx_prayer_checkins_completed ON prayer_checkins(completed);
+
+-- Add unique constraint to prevent duplicate entries
+ALTER TABLE prayer_checkins ADD CONSTRAINT unique_user_prayer_day UNIQUE (user_id, prayer, day);
 
 CREATE INDEX IF NOT EXISTS idx_nudges_from_user ON nudges(from_user);
 CREATE INDEX IF NOT EXISTS idx_nudges_to_user ON nudges(to_user);

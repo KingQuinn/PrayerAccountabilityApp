@@ -118,7 +118,7 @@ class PushNotificationService {
 
       const result = await response.json();
       
-      if (result.data?.[0]?.status === 'ok') {
+      if (result.data?.status === 'ok') {
         console.log('Nudge notification sent successfully');
         return true;
       } else {

@@ -1,7 +1,19 @@
 {
   "expo": {
-    "name": "PrayerAccountabilityApp",
+    "name": "Prayer Accountability App",
     "slug": "PrayerAccountabilityApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "scheme": "PrayerAccountabilityApp",
     "plugins": [
       "expo-router",
