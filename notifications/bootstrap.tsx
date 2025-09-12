@@ -24,7 +24,9 @@ export default function NotificationsBootstrap() {
           importance: Notifications.AndroidImportance.MAX,
           sound: 'adhan1.wav', // Use custom adhan sound
           vibrationPattern: [0, 300, 250, 300],
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          enableLights: true,
+          enableVibrate: true
         });
       }
 
@@ -40,8 +42,8 @@ export default function NotificationsBootstrap() {
             shouldShowAlert: true,
             shouldShowBanner: true,
             shouldShowList: true,
-            // Play system sound for background notifications, custom audio handles foreground
-            shouldPlaySound: isPrayerNotification && !audioNotificationService.isAppInForeground(),
+            // Always play sound for prayer notifications
+            shouldPlaySound: isPrayerNotification,
             shouldSetBadge: false
           };
         }

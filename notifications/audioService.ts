@@ -35,11 +35,17 @@ class AudioNotificationService {
       
       // Clean up after playback
       setTimeout(() => {
-        player.release();
+        try {
+          player.release();
+        } catch (e) {
+          console.log('Player already released');
+        }
       }, 30000); // Release after 30 seconds
       
     } catch (error) {
       console.error('Failed to play adhan sound:', error);
+      // Fallback: try to play system notification sound
+      console.log('Falling back to system notification sound');
     }
   }
 
@@ -77,14 +83,22 @@ class AudioNotificationService {
   }) {
     try {
       // Schedule notification with adhan sound for background, custom audio for foreground
+      const notificationContent: any = {
+        title,
+        body,
+        data: { ...data, useCustomAudio: true, type: 'prayer' },
+      };
+
+      // Configure sound based on platform
+      if (Platform.OS === 'ios') {
+        notificationContent.sound = 'adhan1.wav';
+      } else {
+        // For Android, sound is handled by the channel configuration
+        notificationContent.sound = 'adhan1.wav';
+      }
+
       await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          data: { ...data, useCustomAudio: true },
-          // Use adhan sound for background notifications
-          sound: Platform.OS === 'ios' ? 'adhan1.wav' : 'adhan1.wav',
-        },
+        content: notificationContent,
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: triggerDate,
